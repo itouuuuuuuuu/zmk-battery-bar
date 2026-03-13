@@ -14,5 +14,9 @@
   <string>1.0.0</string>
   <key>CFBundleShortVersionString</key>
   <string>1.0.0</string>
+  <key>CFBundleExecutable</key>
+  <string>ZMKBatteryBar</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
 </dict>
 </plist>

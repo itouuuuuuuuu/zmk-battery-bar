@@ -114,6 +114,7 @@ final class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
       centralManager.cancelPeripheralConnection(peripheral)
     }
     connectedPeripheral = nil
+    reconnectDelay = 5
     resetCharacteristicState()
     batteryState.centralConnected = false
     batteryState.peripheralConnected = false
