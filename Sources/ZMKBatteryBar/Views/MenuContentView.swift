@@ -87,13 +87,12 @@ struct MenuContentView: View {
   }
 
   private func batteryRow(label: String, level: Int?) -> some View {
-    HStack(spacing: 6) {
+    HStack(spacing: 2) {
       Text(label)
         .frame(width: 70, alignment: .leading)
       BatteryIconView(level: level)
       Text(level.map { "\($0)%" } ?? "--")
         .monospacedDigit()
-        .frame(width: 40, alignment: .trailing)
     }
   }
 }
