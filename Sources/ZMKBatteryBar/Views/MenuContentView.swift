@@ -1,0 +1,99 @@
+import SwiftUI
+
+struct MenuContentView: View {
+  @ObservedObject var bleManager: BLEManager
+  let appSettings: AppSettings
+  let batteryState: BatteryState
+
+  @State private var showKeyboardList = false
+  @State private var launchAtLogin = LaunchAtLogin.isEnabled
+
+  var body: some View {
+    if showKeyboardList {
+      KeyboardListView(
+        bleManager: bleManager,
+        appSettings: appSettings,
+        onDismiss: { showKeyboardList = false }
+      )
+    } else {
+      mainContent
+    }
+  }
+
+  @ViewBuilder
+  private var mainContent: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      if appSettings.savedKeyboards.count > 1 {
+        Picker("Keyboard", selection: Binding(
+          get: { appSettings.selectedKeyboardUUID ?? "" },
+          set: { uuid in
+            appSettings.selectedKeyboardUUID = uuid
+            bleManager.disconnect()
+            bleManager.connectSavedKeyboard()
+          }
+        )) {
+          ForEach(appSettings.savedKeyboards) { kb in
+            Text(kb.name).tag(kb.uuid)
+          }
+        }
+        .pickerStyle(.menu)
+      } else if let keyboard = appSettings.selectedKeyboard {
+        Text(keyboard.name)
+          .font(.headline)
+      } else {
+        Text("Not Connected")
+          .font(.headline)
+          .foregroundStyle(.secondary)
+      }
+
+      Divider()
+
+      batteryRow(label: "Central", level: batteryState.centralLevel)
+      batteryRow(label: "Peripheral", level: batteryState.peripheralLevel)
+
+      if let timeAgo = batteryState.timeSinceUpdate {
+        Text("Updated: \(timeAgo)")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+
+      Divider()
+
+      Toggle("Launch at Login", isOn: $launchAtLogin)
+        .onChange(of: launchAtLogin) { _, newValue in
+          do {
+            if newValue {
+              try LaunchAtLogin.enable()
+            } else {
+              try LaunchAtLogin.disable()
+            }
+          } catch {
+            launchAtLogin = !newValue
+          }
+        }
+
+      Button("Add Keyboard...") {
+        showKeyboardList = true
+      }
+
+      Divider()
+
+      Button("Quit") {
+        NSApplication.shared.terminate(nil)
+      }
+    }
+    .padding(12)
+    .frame(width: 250)
+  }
+
+  private func batteryRow(label: String, level: Int?) -> some View {
+    HStack(spacing: 6) {
+      Text(label)
+        .frame(width: 70, alignment: .leading)
+      BatteryIconView(level: level)
+      Text(level.map { "\($0)%" } ?? "--")
+        .monospacedDigit()
+        .frame(width: 40, alignment: .trailing)
+    }
+  }
+}
