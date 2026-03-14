@@ -199,6 +199,9 @@ final class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     resetCharacteristicState()
     batteryState.centralConnected = false
     batteryState.peripheralConnected = false
+    batteryState.centralLevel = nil
+    batteryState.peripheralLevel = nil
+    batteryState.lastUpdated = nil
     scheduleReconnect()
   }
 
