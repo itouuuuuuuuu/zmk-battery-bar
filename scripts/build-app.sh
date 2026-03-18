@@ -20,5 +20,8 @@ cp "${BUILD_DIR}/${EXECUTABLE_NAME}" "${MACOS_DIR}/"
 cp Resources/Info.plist "${CONTENTS_DIR}/Info.plist"
 cp Resources/AppIcon.icns "${RESOURCES_DIR}/AppIcon.icns"
 
+echo "Signing app bundle..."
+codesign --force --deep --sign - "${APP_DIR}"
+
 echo "Done! App bundle created at: ${APP_DIR}"
 echo "To install: cp -r \"${APP_DIR}\" /Applications/"
