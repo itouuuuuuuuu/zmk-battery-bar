@@ -83,8 +83,14 @@ struct MenuContentView: View {
 
       Divider()
 
-      Button("Quit") {
-        NSApplication.shared.terminate(nil)
+      HStack {
+        Text("v\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?")")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        Spacer()
+        Button("Quit") {
+          NSApplication.shared.terminate(nil)
+        }
       }
     }
     .padding(12)
