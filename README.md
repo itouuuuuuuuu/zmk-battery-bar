@@ -33,6 +33,14 @@ swift run ZMKBatteryBar
 
 ## Install
 
+### Homebrew
+
+```sh
+brew install itouuuuuuuuu/tap/zmk-battery-bar
+```
+
+### Manual
+
 ```sh
 ./scripts/build-app.sh
 cp -r "build/ZMK Battery Bar.app" /Applications/
