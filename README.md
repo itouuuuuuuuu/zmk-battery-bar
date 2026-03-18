@@ -19,31 +19,10 @@ A macOS menu bar app that displays battery levels from ZMK split keyboards via B
 - macOS 14 (Sonoma) or later
 - A ZMK-powered split keyboard with BLE Battery Service enabled
 
-## Build & Run
-
-```sh
-# Debug build and run
-swift build
-swift run ZMKBatteryBar
-
-# Release .app bundle
-./scripts/build-app.sh
-# Output: build/ZMK Battery Bar.app
-```
-
 ## Install
-
-### Homebrew
 
 ```sh
 brew install itouuuuuuuuu/tap/zmk-battery-bar
-```
-
-### Manual
-
-```sh
-./scripts/build-app.sh
-cp -r "build/ZMK Battery Bar.app" /Applications/
 ```
 
 ## Usage
@@ -54,7 +33,27 @@ cp -r "build/ZMK Battery Bar.app" /Applications/
 4. Select your ZMK keyboard from the discovered devices list
 5. Battery levels update automatically via BLE notifications
 
-## Architecture
+## How It Works
+
+1. On launch, the app connects to the previously saved keyboard via `retrievePeripherals(withIdentifiers:)`
+2. It discovers the BLE Battery Service (0x180F) and Battery Level Characteristic (0x2A19)
+3. Descriptor `0x2901` (User Description) is read to determine Central vs Peripheral
+4. Battery level notifications are subscribed to for real-time updates, with 60-second polling as fallback
+5. The status bar icon is rendered as an `NSImage` using SwiftUI `ImageRenderer`
+
+## Development
+
+```sh
+# Debug build and run
+swift build
+swift run ZMKBatteryBar
+
+# Release .app bundle
+./scripts/build-app.sh
+cp -r "build/ZMK Battery Bar.app" /Applications/
+```
+
+### Architecture
 
 | Directory | Description |
 |---|---|
@@ -63,14 +62,6 @@ cp -r "build/ZMK Battery Bar.app" /Applications/
 | `Sources/.../Views/` | SwiftUI views (status bar, popover, keyboard list) |
 | `Sources/.../Models/` | BatteryState (@Observable), AppSettings (UserDefaults), KeyboardDevice |
 | `Sources/.../Utilities/` | Launch at login (SMAppService wrapper) |
-
-## How It Works
-
-1. On launch, the app connects to the previously saved keyboard via `retrievePeripherals(withIdentifiers:)`
-2. It discovers the BLE Battery Service (0x180F) and Battery Level Characteristic (0x2A19)
-3. Descriptor `0x2901` (User Description) is read to determine Central vs Peripheral
-4. Battery level notifications are subscribed to for real-time updates, with 60-second polling as fallback
-5. The status bar icon is rendered as an `NSImage` using SwiftUI `ImageRenderer`
 
 ## License
 
