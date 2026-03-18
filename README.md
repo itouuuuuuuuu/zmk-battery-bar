@@ -28,19 +28,19 @@ swift run ZMKBatteryBar
 
 # Release .app bundle
 ./scripts/build-app.sh
-# Output: build/ZMKBatteryBar.app
+# Output: build/ZMK Battery Bar.app
 ```
 
 ## Install
 
 ```sh
 ./scripts/build-app.sh
-cp -r build/ZMKBatteryBar.app /Applications/
+cp -r "build/ZMK Battery Bar.app" /Applications/
 ```
 
 ## Usage
 
-1. Launch ZMKBatteryBar — it appears in the menu bar with `C` and `P` battery levels
+1. Launch ZMK Battery Bar — it appears in the menu bar with `C` and `P` battery levels
 2. Click the status bar item to open the popover
 3. If no keyboard is connected, click **Add Keyboard...** to scan for BLE devices
 4. Select your ZMK keyboard from the discovered devices list
