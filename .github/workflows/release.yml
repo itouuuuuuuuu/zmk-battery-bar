@@ -30,7 +30,7 @@ jobs:
           security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
           security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
           # Import Apple intermediate certificates for Developer ID
-          curl -sL "https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer" -o "$RUNNER_TEMP/DeveloperIDG2CA.cer"
+          curl -fsSL "https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer" -o "$RUNNER_TEMP/DeveloperIDG2CA.cer"
           security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "${KEYCHAIN_PATH}" -T /usr/bin/codesign
 
           security import "${CERT_PATH}" -P "${CERTIFICATE_PASSWORD}" \
@@ -90,8 +90,8 @@ jobs:
           VERSION="${{ steps.sha.outputs.version }}"
           SHA256="${{ steps.sha.outputs.sha256 }}"
 
-          git clone "https://x-access-token:${GH_TOKEN}@github.com/itouuuuuuuuu/homebrew-tap.git" /tmp/tap
-          cd /tmp/tap
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/itouuuuuuuuu/homebrew-tap.git" "$RUNNER_TEMP/tap"
+          cd "$RUNNER_TEMP/tap"
 
           sed -i '' "s/version \".*\"/version \"${VERSION}\"/" Casks/zmk-battery-bar.rb
           sed -i '' "s/sha256 \".*\"/sha256 \"${SHA256}\"/" Casks/zmk-battery-bar.rb
