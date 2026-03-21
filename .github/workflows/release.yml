@@ -34,15 +34,14 @@ jobs:
             -A -t cert -f pkcs12 -k "${KEYCHAIN_PATH}"
           security set-key-partition-list -S apple-tool:,apple: \
             -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
-          security list-keychains -d user -s "${KEYCHAIN_PATH}" login.keychain-db
+          security list-keychains -d user -s "${KEYCHAIN_PATH}" login.keychain-db /Library/Keychains/System.keychain
 
       - name: Determine signing identity
         id: identity
         run: |
-          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
-          echo "Available identities:"
-          security find-identity -v -p codesigning "${KEYCHAIN_PATH}"
-          IDENTITY=$(security find-identity -v -p codesigning "${KEYCHAIN_PATH}" | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "Available identities (all keychains):"
+          security find-identity -v -p codesigning
+          IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/')
           if [ -z "${IDENTITY}" ]; then
             echo "::error::No Developer ID Application identity found in keychain"
             exit 1
