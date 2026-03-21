@@ -37,7 +37,15 @@ echo "Signing app bundle with identity: ${SIGN_IDENTITY}"
 if [ "${SIGN_IDENTITY}" = "-" ]; then
   codesign --force --deep --sign - "${APP_DIR}"
 else
-  codesign --force --deep --sign "${SIGN_IDENTITY}" \
+  # Sign the main executable first, then the bundle
+  # --deep does not reliably propagate --options runtime and --entitlements
+  codesign --force --sign "${SIGN_IDENTITY}" \
+    --options runtime \
+    --entitlements "${ENTITLEMENTS}" \
+    --timestamp \
+    "${MACOS_DIR}/${EXECUTABLE_NAME}"
+
+  codesign --force --sign "${SIGN_IDENTITY}" \
     --options runtime \
     --entitlements "${ENTITLEMENTS}" \
     --timestamp \
