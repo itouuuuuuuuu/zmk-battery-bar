@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-sign-release:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Import signing certificate
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+        run: |
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+
+          echo "${CERTIFICATE_BASE64}" | base64 --decode > "${CERT_PATH}"
+
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security import "${CERT_PATH}" -P "${CERTIFICATE_PASSWORD}" \
+            -A -t cert -f pkcs12 -k "${KEYCHAIN_PATH}"
+          security set-key-partition-list -S apple-tool:,apple: \
+            -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security list-keychains -d user -s "${KEYCHAIN_PATH}" login.keychain-db
+
+      - name: Determine signing identity
+        id: identity
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          IDENTITY=$(security find-identity -v -p codesigning "${KEYCHAIN_PATH}" | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "name=${IDENTITY}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and sign
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./scripts/build-app.sh "${{ steps.identity.outputs.name }}" "${VERSION}"
+
+      - name: Notarize and staple
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          ./scripts/notarize.sh "build/ZMK Battery Bar.app"
+
+      - name: Create release zip
+        id: sha
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cd build
+          zip -r "../ZMKBatteryBar-${VERSION}.zip" "ZMK Battery Bar.app"
+          cd ..
+          SHA256=$(shasum -a 256 "ZMKBatteryBar-${VERSION}.zip" | awk '{print $1}')
+          echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh release create "${GITHUB_REF_NAME}" \
+            "ZMKBatteryBar-${VERSION}.zip" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes
+
+      - name: Update Homebrew Cask
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION="${{ steps.sha.outputs.version }}"
+          SHA256="${{ steps.sha.outputs.sha256 }}"
+
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/itouuuuuuuuu/homebrew-tap.git" /tmp/tap
+          cd /tmp/tap
+
+          sed -i '' "s/version \".*\"/version \"${VERSION}\"/" Casks/zmk-battery-bar.rb
+          sed -i '' "s/sha256 \".*\"/sha256 \"${SHA256}\"/" Casks/zmk-battery-bar.rb
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Update zmk-battery-bar to ${VERSION}"
+          git push
+
+      - name: Clean up keychain
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true

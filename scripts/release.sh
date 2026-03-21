@@ -1,15 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="${1:?Usage: $0 <version> (e.g. 1.0.0)}"
+VERSION="${1:?Usage: $0 <version> [signing-identity]}"
 TAG="v${VERSION}"
 DISPLAY_NAME="ZMK Battery Bar"
 ZIP_NAME="ZMKBatteryBar-${VERSION}.zip"
 
-# Build the app
-./scripts/build-app.sh
+# Signing identity: pass as second argument, or default to ad-hoc
+SIGN_IDENTITY="${2:--}"
 
-# Create zip archive
+# Build the app with signing identity and version
+./scripts/build-app.sh "${SIGN_IDENTITY}" "${VERSION}"
+
+# Notarize if using a real signing identity
+if [ "${SIGN_IDENTITY}" != "-" ]; then
+  echo "Notarizing..."
+  ./scripts/notarize.sh "build/${DISPLAY_NAME}.app"
+fi
+
+# Create zip archive (after stapling so the ticket is included)
 echo "Creating ${ZIP_NAME}..."
 cd build
 zip -r "../${ZIP_NAME}" "${DISPLAY_NAME}.app"
