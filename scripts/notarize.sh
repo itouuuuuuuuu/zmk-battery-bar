@@ -12,11 +12,33 @@ echo "Creating zip for notarization..."
 ditto -c -k --keepParent "${APP_PATH}" "${NOTARIZE_ZIP}"
 
 echo "Submitting for notarization..."
-xcrun notarytool submit "${NOTARIZE_ZIP}" \
+SUBMIT_OUTPUT=$(xcrun notarytool submit "${NOTARIZE_ZIP}" \
   --apple-id "${APPLE_ID}" \
   --password "${APPLE_ID_PASSWORD}" \
   --team-id "${APPLE_TEAM_ID}" \
-  --wait
+  --wait 2>&1) || true
+echo "${SUBMIT_OUTPUT}"
+
+# Extract submission ID and check status
+SUBMISSION_ID=$(echo "${SUBMIT_OUTPUT}" | grep "id:" | head -1 | awk '{print $2}')
+
+if echo "${SUBMIT_OUTPUT}" | grep -q "status: Invalid"; then
+  echo "Notarization failed! Fetching log..."
+  xcrun notarytool log "${SUBMISSION_ID}" \
+    --apple-id "${APPLE_ID}" \
+    --password "${APPLE_ID_PASSWORD}" \
+    --team-id "${APPLE_TEAM_ID}" || true
+  exit 1
+fi
+
+if ! echo "${SUBMIT_OUTPUT}" | grep -q "status: Accepted"; then
+  echo "Unexpected notarization status. Fetching log..."
+  xcrun notarytool log "${SUBMISSION_ID}" \
+    --apple-id "${APPLE_ID}" \
+    --password "${APPLE_ID_PASSWORD}" \
+    --team-id "${APPLE_TEAM_ID}" || true
+  exit 1
+fi
 
 echo "Stapling notarization ticket..."
 xcrun stapler staple "${APP_PATH}"
