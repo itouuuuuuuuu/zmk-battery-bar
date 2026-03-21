@@ -36,13 +36,22 @@ jobs:
         id: identity
         run: |
           KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          echo "Available identities:"
+          security find-identity -v -p codesigning "${KEYCHAIN_PATH}"
           IDENTITY=$(security find-identity -v -p codesigning "${KEYCHAIN_PATH}" | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          if [ -z "${IDENTITY}" ]; then
+            echo "::error::No Developer ID Application identity found in keychain"
+            exit 1
+          fi
+          echo "Using identity: ${IDENTITY}"
           echo "name=${IDENTITY}" >> "$GITHUB_OUTPUT"
 
       - name: Build and sign
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          ./scripts/build-app.sh "${{ steps.identity.outputs.name }}" "${VERSION}"
+          IDENTITY="${{ steps.identity.outputs.name }}"
+          echo "Signing with: ${IDENTITY}"
+          ./scripts/build-app.sh "${IDENTITY}" "${VERSION}"
 
       - name: Notarize and staple
         env:
