@@ -22,7 +22,7 @@ A macOS menu bar app that displays battery levels from ZMK split keyboards via B
 ## Install
 
 ```sh
-brew install itouuuuuuuuu/tap/zmk-battery-bar
+brew install --cask itouuuuuuuuu/tap/zmk-battery-bar
 ```
 
 ## Usage
@@ -48,9 +48,49 @@ brew install itouuuuuuuuu/tap/zmk-battery-bar
 swift build
 swift run ZMKBatteryBar
 
-# Release .app bundle
+# Release .app bundle (ad-hoc signing for local use)
 ./scripts/build-app.sh
 cp -r "build/ZMK Battery Bar.app" /Applications/
+
+# Release .app bundle with Developer ID signing
+./scripts/build-app.sh "Developer ID Application: Your Name (TEAMID)" "1.0.0"
+```
+
+### Release
+
+Releases are automated via GitHub Actions. Pushing a version tag triggers the full pipeline:
+
+```sh
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+This will automatically:
+
+1. Build the app in release mode
+2. Sign with Developer ID certificate (hardened runtime)
+3. Notarize with Apple and staple the ticket
+4. Create a GitHub Release with the signed zip
+5. Update the [Homebrew Cask](https://github.com/itouuuuuuuuu/homebrew-tap) with the new version and SHA256
+
+#### Required GitHub Secrets
+
+| Secret | Description |
+|---|---|
+| `DEVELOPER_ID_CERTIFICATE_BASE64` | Base64-encoded .p12 certificate |
+| `DEVELOPER_ID_CERTIFICATE_PASSWORD` | Password for the .p12 file |
+| `APPLE_ID` | Apple ID email for notarization |
+| `APPLE_ID_PASSWORD` | App-specific password for notarization |
+| `APPLE_TEAM_ID` | Apple Developer Team ID |
+| `HOMEBREW_TAP_TOKEN` | GitHub PAT with write access to homebrew-tap repo |
+
+#### Manual Release (without CI)
+
+```sh
+export APPLE_ID="your@email.com"
+export APPLE_ID_PASSWORD="xxxx-xxxx-xxxx-xxxx"
+export APPLE_TEAM_ID="XXXXXXXXXX"
+./scripts/release.sh 1.2.0 "Developer ID Application: Your Name (TEAMID)"
 ```
 
 ### Architecture
