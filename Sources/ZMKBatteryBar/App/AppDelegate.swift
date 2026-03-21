@@ -74,7 +74,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     let buttonRect = buttonWindow.frame
-    let panelSize = panel.contentView!.fittingSize
+    guard let contentView = panel.contentView else { return }
+    let panelSize = contentView.fittingSize
 
     let x = buttonRect.midX - panelSize.width / 2
     let y = buttonRect.minY - panelSize.height - 4
