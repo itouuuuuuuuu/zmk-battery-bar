@@ -42,37 +42,17 @@ jobs:
       - name: Determine signing identity
         id: identity
         run: |
-          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
-
-          echo "=== Keychain search list ==="
-          security list-keychains -d user
-
-          echo "=== All identities (including invalid) ==="
-          security find-identity -p codesigning
-
-          echo "=== Valid identities only ==="
-          security find-identity -v -p codesigning
-
-          echo "=== Certificates in signing keychain ==="
-          security find-certificate -a -p "${KEYCHAIN_PATH}" | openssl x509 -noout -subject -issuer 2>/dev/null || echo "No certs found or parse error"
-
           IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/')
           if [ -z "${IDENTITY}" ]; then
-            # Try without -v to see if the identity exists but is invalid
-            echo "=== Trying without validity check ==="
-            security find-identity -p codesigning | grep -i "developer" || echo "No developer identity at all"
             echo "::error::No Developer ID Application identity found in keychain"
             exit 1
           fi
-          echo "Using identity: ${IDENTITY}"
           echo "name=${IDENTITY}" >> "$GITHUB_OUTPUT"
 
       - name: Build and sign
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          IDENTITY="${{ steps.identity.outputs.name }}"
-          echo "Signing with: ${IDENTITY}"
-          ./scripts/build-app.sh "${IDENTITY}" "${VERSION}"
+          ./scripts/build-app.sh "${{ steps.identity.outputs.name }}" "${VERSION}"
 
       - name: Notarize and staple
         env:
