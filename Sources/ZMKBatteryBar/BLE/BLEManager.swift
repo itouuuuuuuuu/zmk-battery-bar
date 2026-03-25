@@ -54,6 +54,10 @@ final class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     self.centralManager = CBCentralManager(delegate: self, queue: nil)
   }
 
+  deinit {
+    stopPollingTimer()
+  }
+
   // MARK: - Public Methods
 
   func startScanning() {
