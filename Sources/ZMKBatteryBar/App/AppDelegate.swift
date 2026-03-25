@@ -36,6 +36,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     panel = StatusBarPanel(content: menuContent)
   }
 
+  func applicationWillTerminate(_ notification: Notification) {
+    renderTimer?.invalidate()
+    renderTimer = nil
+  }
+
   // MARK: - Status bar rendering
 
   @MainActor private func updateButtonImageIfNeeded() {
@@ -128,10 +133,7 @@ final class StatusBarPanel: NSPanel {
   override var canBecomeKey: Bool { true }
 
   override func makeKeyAndOrderFront(_ sender: Any?) {
-    if let monitor {
-      NSEvent.removeMonitor(monitor)
-      self.monitor = nil
-    }
+    removeMonitor()
     super.makeKeyAndOrderFront(sender)
     monitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
       self?.close()
@@ -140,6 +142,14 @@ final class StatusBarPanel: NSPanel {
 
   override func close() {
     super.close()
+    removeMonitor()
+  }
+
+  deinit {
+    removeMonitor()
+  }
+
+  private func removeMonitor() {
     if let monitor {
       NSEvent.removeMonitor(monitor)
     }
