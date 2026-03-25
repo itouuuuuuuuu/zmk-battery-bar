@@ -78,10 +78,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          gh release create "${GITHUB_REF_NAME}" \
-            "ZMKBatteryBar-${VERSION}.zip" \
-            --title "${GITHUB_REF_NAME}" \
-            --generate-notes
+          if gh release view "${GITHUB_REF_NAME}" > /dev/null 2>&1; then
+            echo "Release ${GITHUB_REF_NAME} already exists, uploading asset to existing release"
+            gh release upload "${GITHUB_REF_NAME}" "ZMKBatteryBar-${VERSION}.zip" --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" \
+              "ZMKBatteryBar-${VERSION}.zip" \
+              --title "${GITHUB_REF_NAME}" \
+              --generate-notes
+          fi
 
       - name: Update Homebrew Cask
         env:
@@ -99,8 +104,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "Update zmk-battery-bar to ${VERSION}"
-          git push
+          if git diff --cached --quiet; then
+            echo "Homebrew cask already up to date for ${VERSION}"
+          else
+            git commit -m "Update zmk-battery-bar to ${VERSION}"
+            git push
+          fi
 
       - name: Clean up keychain
         if: always()
