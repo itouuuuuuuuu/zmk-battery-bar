@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 
 import PackageDescription
 
@@ -11,8 +11,8 @@ let package = Package(
     .executableTarget(
       name: "ZMKBatteryBar",
       path: "Sources/ZMKBatteryBar",
-      resources: [
-        .copy("../../Resources/Info.plist"),
+      swiftSettings: [
+        .swiftLanguageMode(.v5),
       ]
     ),
   ]
