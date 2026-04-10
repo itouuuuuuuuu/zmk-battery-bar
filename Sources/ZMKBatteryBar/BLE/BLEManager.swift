@@ -1,4 +1,4 @@
-import CoreBluetooth
+@preconcurrency import CoreBluetooth
 import Foundation
 
 // MARK: - DeviceRole
@@ -19,7 +19,8 @@ struct DiscoveredDevice: Identifiable {
 
 // MARK: - BLEManager
 
-final class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeripheralDelegate {
+@MainActor
+final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralManagerDelegate, @preconcurrency CBPeripheralDelegate {
 
   // MARK: - BLE UUIDs
 
@@ -52,10 +53,6 @@ final class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     self.appSettings = appSettings
     super.init()
     self.centralManager = CBCentralManager(delegate: self, queue: nil)
-  }
-
-  deinit {
-    stopPollingTimer()
   }
 
   // MARK: - Public Methods
@@ -136,7 +133,10 @@ final class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
   private func startPollingTimer() {
     stopPollingTimer()
     pollingTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-      self?.readAllBatteryCharacteristics()
+      // Timer fires on the main run loop, so this is always on the main actor.
+      MainActor.assumeIsolated {
+        self?.readAllBatteryCharacteristics()
+      }
     }
   }
 

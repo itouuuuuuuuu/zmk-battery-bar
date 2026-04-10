@@ -12,7 +12,7 @@ let package = Package(
       name: "ZMKBatteryBar",
       path: "Sources/ZMKBatteryBar",
       swiftSettings: [
-        .swiftLanguageMode(.v5),
+        .swiftLanguageMode(.v6),
       ]
     ),
   ]
