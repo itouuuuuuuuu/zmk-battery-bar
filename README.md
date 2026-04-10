@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/app-icon.png" alt="ZMK Battery Bar icon" width="256" />
+</p>
+
 # ZMK Battery Bar
 
 A macOS menu bar app that displays battery levels from ZMK split keyboards via BLE.
