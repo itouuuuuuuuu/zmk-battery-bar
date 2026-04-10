@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
   private var statusItem: NSStatusItem!
   private var panel: StatusBarPanel!
@@ -25,7 +26,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     renderTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
-      Task { @MainActor in self?.updateButtonImageIfNeeded() }
+      // Timer fires on the main run loop, so this is always on the main actor.
+      MainActor.assumeIsolated {
+        self?.updateButtonImageIfNeeded()
+      }
     }
 
     let menuContent = MenuContentView(
@@ -94,7 +98,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 // MARK: - StatusBarPanel
 
 final class StatusBarPanel: NSPanel {
-  private var monitor: Any?
+  // NSEvent monitor handle. Marked nonisolated(unsafe) so `deinit` (which is
+  // nonisolated) can clean it up. NSEvent.addGlobalMonitorForEvents /
+  // removeMonitor are documented as thread-safe, and all non-deinit accesses
+  // happen on the main actor, so there is no race.
+  private nonisolated(unsafe) var monitor: Any?
 
   init<Content: View>(content: Content) {
     super.init(
@@ -149,7 +157,7 @@ final class StatusBarPanel: NSPanel {
     removeMonitor()
   }
 
-  private func removeMonitor() {
+  private nonisolated func removeMonitor() {
     if let monitor {
       NSEvent.removeMonitor(monitor)
     }
