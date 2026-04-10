@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/app-icon.png" alt="ZMK Battery Bar icon" width="128" />
+  <img src="assets/app-icon.png" alt="ZMK Battery Bar icon" width="256" />
 </p>
 
 # ZMK Battery Bar
