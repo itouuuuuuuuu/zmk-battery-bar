@@ -166,6 +166,13 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   private func readAllBatteryCharacteristics() {
     guard let peripheral = connectedPeripheral else { return }
     for characteristic in batteryCharacteristics {
+      if characteristicRoles[characteristic] == nil {
+        // The initial descriptor read failed (or has not completed yet).
+        // Rerun descriptor discovery so didDiscoverDescriptorsFor /
+        // didUpdateValueFor descriptor can try to resolve the role again,
+        // rather than leaving the characteristic silently unreadable.
+        peripheral.discoverDescriptors(for: characteristic)
+      }
       peripheral.readValue(for: characteristic)
     }
   }
@@ -321,7 +328,17 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
 
     if let error {
       print("[BLEManager] Descriptor read error: \(error.localizedDescription)")
-    } else if let value = descriptor.value as? String {
+      // Leave the role unresolved rather than falling back to array-index
+      // ordering. GATT does not guarantee characteristic ordering, so an
+      // index guess would permanently mis-map central/peripheral for any
+      // keyboard whose characteristics happen to be discovered in the
+      // opposite order. The polling timer retries descriptor discovery for
+      // unresolved characteristics, so a transient failure recovers on the
+      // next tick.
+      return
+    }
+
+    if let value = descriptor.value as? String {
       let lowered = value.lowercased()
       if lowered.contains("central") {
         characteristicRoles[characteristic] = .central
@@ -330,14 +347,12 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
       }
     }
 
-    // Regardless of whether the descriptor read succeeded or produced a
-    // recognizable role string, make sure the characteristic ends up with
-    // *some* role before we read its value. Otherwise the unknown-role guard
-    // in didUpdateValueFor characteristic would drop every subsequent
-    // notify / poll update for this characteristic — which keyboards that
-    // expose 0x2901 but cannot reliably serve it would hit permanently.
     if characteristicRoles[characteristic] == nil,
        let index = batteryCharacteristics.firstIndex(of: characteristic) {
+      // Descriptor read succeeded but the value was missing / not a readable
+      // string / didn't contain the expected keyword. Unlike the error path,
+      // this is "we got a response, it just isn't what we hoped for" — index
+      // ordering is an acceptable best-effort in that case.
       characteristicRoles[characteristic] = index == 0 ? .central : .peripheral
     }
 
