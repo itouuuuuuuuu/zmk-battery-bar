@@ -100,6 +100,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     batteryState.peripheralConnected = false
     batteryState.centralLevel = nil
     batteryState.peripheralLevel = nil
+    batteryState.lastUpdated = nil
 
     connectedPeripheral = peripheral
     peripheral.delegate = self
@@ -312,30 +313,34 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     didUpdateValueFor descriptor: CBDescriptor,
     error: Error?
   ) {
-    if let error {
-      print("[BLEManager] Descriptor read error: \(error.localizedDescription)")
-      return
-    }
+    // Only user description descriptors carry role information. Other
+    // descriptors can reach this callback but are not ours to handle.
     guard descriptor.uuid == Self.characteristicUserDescriptionUUID,
-          let characteristic = descriptor.characteristic,
-          let value = descriptor.value as? String
+          let characteristic = descriptor.characteristic
     else { return }
 
-    let lowered = value.lowercased()
-    if lowered.contains("central") {
-      characteristicRoles[characteristic] = .central
-    } else if lowered.contains("peripheral") {
-      characteristicRoles[characteristic] = .peripheral
+    if let error {
+      print("[BLEManager] Descriptor read error: \(error.localizedDescription)")
+    } else if let value = descriptor.value as? String {
+      let lowered = value.lowercased()
+      if lowered.contains("central") {
+        characteristicRoles[characteristic] = .central
+      } else if lowered.contains("peripheral") {
+        characteristicRoles[characteristic] = .peripheral
+      }
     }
+
+    // Regardless of whether the descriptor read succeeded or produced a
+    // recognizable role string, make sure the characteristic ends up with
+    // *some* role before we read its value. Otherwise the unknown-role guard
+    // in didUpdateValueFor characteristic would drop every subsequent
+    // notify / poll update for this characteristic — which keyboards that
+    // expose 0x2901 but cannot reliably serve it would hit permanently.
     if characteristicRoles[characteristic] == nil,
        let index = batteryCharacteristics.firstIndex(of: characteristic) {
-      // Descriptor did not contain the expected keyword — fall back to
-      // array-index ordering so the subsequent read is not dropped as
-      // unknown-role.
       characteristicRoles[characteristic] = index == 0 ? .central : .peripheral
     }
 
-    // Role is now known, so it is safe to kick off the initial battery read.
     peripheral.readValue(for: characteristic)
   }
 
