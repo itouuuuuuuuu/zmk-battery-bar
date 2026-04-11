@@ -9,7 +9,7 @@ A macOS menu bar app that displays battery levels from ZMK split keyboards via B
 ![Screenshot](assets/screenshot.png)
 
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue)
-![Swift 5.9](https://img.shields.io/badge/Swift-5.9-orange)
+![Swift 6.0](https://img.shields.io/badge/Swift-6.0-orange)
 
 ## Features
 
