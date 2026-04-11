@@ -86,6 +86,21 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
 
   func connect(peripheral: CBPeripheral) {
     stopScanning()
+
+    // Cancel any existing connection before overwriting connectedPeripheral.
+    // Without this, the old peripheral stays connected at the BLE layer and
+    // its notify / delegate callbacks can leak into the new keyboard's state.
+    if let existing = connectedPeripheral, existing.identifier != peripheral.identifier {
+      existing.delegate = nil
+      centralManager.cancelPeripheralConnection(existing)
+    }
+    stopPollingTimer()
+    resetCharacteristicState()
+    batteryState.centralConnected = false
+    batteryState.peripheralConnected = false
+    batteryState.centralLevel = nil
+    batteryState.peripheralLevel = nil
+
     connectedPeripheral = peripheral
     peripheral.delegate = self
     centralManager.connect(peripheral, options: nil)
@@ -112,6 +127,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   func disconnect() {
     stopPollingTimer()
     if let peripheral = connectedPeripheral {
+      peripheral.delegate = nil
       centralManager.cancelPeripheralConnection(peripheral)
     }
     connectedPeripheral = nil
@@ -121,6 +137,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     batteryState.peripheralConnected = false
     batteryState.centralLevel = nil
     batteryState.peripheralLevel = nil
+    batteryState.lastUpdated = nil
   }
 
   // MARK: - Private Methods
@@ -188,6 +205,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   }
 
   func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+    guard peripheral.identifier == connectedPeripheral?.identifier else { return }
     reconnectDelay = 5
     resetCharacteristicState()
     peripheral.discoverServices([Self.batteryServiceUUID])
@@ -199,6 +217,12 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     didDisconnectPeripheral peripheral: CBPeripheral,
     error: Error?
   ) {
+    // Ignore disconnect callbacks for peripherals we have already moved on
+    // from (user-initiated disconnect, or a switch to a different keyboard).
+    // Without this guard, a stale disconnect would wipe the new peripheral's
+    // state and schedule an unwanted reconnect to the old one.
+    guard peripheral.identifier == connectedPeripheral?.identifier else { return }
+
     stopPollingTimer()
     resetCharacteristicState()
     batteryState.centralConnected = false
@@ -214,6 +238,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     didFailToConnect peripheral: CBPeripheral,
     error: Error?
   ) {
+    guard peripheral.identifier == connectedPeripheral?.identifier else { return }
     print("[BLEManager] Failed to connect: \(error?.localizedDescription ?? "unknown error")")
     scheduleReconnect()
   }
@@ -243,9 +268,13 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     guard let characteristics = service.characteristics else { return }
     for characteristic in characteristics {
       batteryCharacteristics.append(characteristic)
-      peripheral.discoverDescriptors(for: characteristic)
       peripheral.setNotifyValue(true, for: characteristic)
-      peripheral.readValue(for: characteristic)
+      peripheral.discoverDescriptors(for: characteristic)
+      // The initial readValue is deferred until the characteristic's role is
+      // known (see didDiscoverDescriptorsFor / didUpdateValueFor descriptor).
+      // Reading here would race descriptor discovery, and since GATT does not
+      // guarantee characteristic ordering, the array-index fallback can map
+      // central/peripheral to the wrong slots until the next polled update.
     }
   }
 
@@ -258,9 +287,23 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
       print("[BLEManager] Descriptor discovery error: \(error.localizedDescription)")
       return
     }
-    guard let descriptors = characteristic.descriptors else { return }
-    for descriptor in descriptors where descriptor.uuid == Self.characteristicUserDescriptionUUID {
+
+    let userDescriptionDescriptor = characteristic.descriptors?.first { descriptor in
+      descriptor.uuid == Self.characteristicUserDescriptionUUID
+    }
+
+    if let descriptor = userDescriptionDescriptor {
+      // Role is resolved in didUpdateValueFor descriptor, which then triggers
+      // the initial battery read for this characteristic.
       peripheral.readValue(for: descriptor)
+    } else {
+      // No user-description descriptor available — fall back to array-index
+      // ordering so the initial read has a definitive role to attach to.
+      if characteristicRoles[characteristic] == nil,
+         let index = batteryCharacteristics.firstIndex(of: characteristic) {
+        characteristicRoles[characteristic] = index == 0 ? .central : .peripheral
+      }
+      peripheral.readValue(for: characteristic)
     }
   }
 
@@ -284,6 +327,16 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     } else if lowered.contains("peripheral") {
       characteristicRoles[characteristic] = .peripheral
     }
+    if characteristicRoles[characteristic] == nil,
+       let index = batteryCharacteristics.firstIndex(of: characteristic) {
+      // Descriptor did not contain the expected keyword — fall back to
+      // array-index ordering so the subsequent read is not dropped as
+      // unknown-role.
+      characteristicRoles[characteristic] = index == 0 ? .central : .peripheral
+    }
+
+    // Role is now known, so it is safe to kick off the initial battery read.
+    peripheral.readValue(for: characteristic)
   }
 
   func peripheral(
@@ -291,6 +344,8 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     didUpdateValueFor characteristic: CBCharacteristic,
     error: Error?
   ) {
+    guard peripheral.identifier == connectedPeripheral?.identifier else { return }
+
     if let error {
       print("[BLEManager] Battery read error: \(error.localizedDescription)")
       return
@@ -298,14 +353,12 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     guard let data = characteristic.value, let byte = data.first else { return }
     let level = Int(byte)
 
-    let role: DeviceRole
-    if let mapped = characteristicRoles[characteristic] {
-      role = mapped
-    } else if let index = batteryCharacteristics.firstIndex(of: characteristic) {
-      role = index == 0 ? .central : .peripheral
-    } else {
-      role = .central
-    }
+    // If the role has not been determined yet (e.g. a notify-driven update
+    // arrives during the initial connection window before descriptor
+    // discovery completes), drop the update. The explicit readValue in
+    // didUpdateValueFor descriptor / didDiscoverDescriptorsFor will re-fetch
+    // the value once the role is known.
+    guard let role = characteristicRoles[characteristic] else { return }
 
     switch role {
     case .central:
