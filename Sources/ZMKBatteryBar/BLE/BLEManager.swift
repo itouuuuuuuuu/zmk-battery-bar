@@ -249,20 +249,25 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   }
 
   // Record that descriptor-based role resolution is terminally done (success
-  // or giving up) for this characteristic and try to derive a role for it —
-  // either from stable information (peer's known role, or this being the only
-  // characteristic) or, if every remaining unresolved characteristic is also
-  // terminal, from array-index ordering as a last resort. Used by the four
-  // descriptor-failure code paths so they share the same resolution logic.
+  // or giving up) for this characteristic and sync the battery state.
+  // `syncBatteryState` runs the cascade, so role inference (either from
+  // stable information or, if every unresolved characteristic has hit a
+  // terminal state, via array-index fallback) happens there.
   private func markTerminalFailureAndTryResolve(for characteristic: CBCharacteristic) {
     terminallyFailedCharacteristics.insert(characteristic)
-    if assignRemainingRoleIfPossible(for: characteristic)
-        || assignFallbackRolesForUnresolvedCharacteristicsIfNeeded() {
-      syncBatteryState()
-    }
+    syncBatteryState()
   }
 
   private func syncBatteryState() {
+    // Cascade any newly-inferable role assignments to unresolved siblings
+    // before rebuilding the UI state. Without this, a characteristic whose
+    // battery level was already cached but whose role gets resolved later
+    // (e.g. the peer's descriptor just succeeded and we can now infer this
+    // one via stable information) would stay blank until the next notify or
+    // poll cycle. Running the helper here centralizes the cascade so every
+    // sync path benefits.
+    _ = assignFallbackRolesForUnresolvedCharacteristicsIfNeeded()
+
     var centralLevel: Int?
     var peripheralLevel: Int?
     var centralConnected = false
@@ -480,11 +485,6 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     guard let data = characteristic.value, let byte = data.first else { return }
     let level = Int(byte)
     latestBatteryLevels[characteristic] = level
-
-    if characteristicRoles[characteristic] == nil {
-      _ = assignRemainingRoleIfPossible(for: characteristic)
-        || assignFallbackRolesForUnresolvedCharacteristicsIfNeeded()
-    }
 
     syncBatteryState()
   }
