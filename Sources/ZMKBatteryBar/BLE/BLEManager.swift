@@ -177,6 +177,38 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     }
   }
 
+  private func assignRemainingRoleIfPossible(for characteristic: CBCharacteristic) -> Bool {
+    if characteristicRoles[characteristic] != nil {
+      return true
+    }
+
+    if batteryCharacteristics.count == 1 {
+      characteristicRoles[characteristic] = .central
+      return true
+    }
+
+    guard batteryCharacteristics.count == 2,
+          let otherCharacteristic = batteryCharacteristics.first(where: { $0 != characteristic }),
+          let otherRole = characteristicRoles[otherCharacteristic]
+    else {
+      return false
+    }
+
+    characteristicRoles[characteristic] = otherRole == .central ? .peripheral : .central
+    return true
+  }
+
+  private func assignRoleByIndexIfNeeded(for characteristic: CBCharacteristic) -> Bool {
+    guard characteristicRoles[characteristic] == nil,
+          let index = batteryCharacteristics.firstIndex(of: characteristic)
+    else {
+      return characteristicRoles[characteristic] != nil
+    }
+
+    characteristicRoles[characteristic] = index == 0 ? .central : .peripheral
+    return true
+  }
+
   private func scheduleReconnect() {
     let delay = reconnectDelay
     reconnectDelay = min(reconnectDelay * 2, Self.maxReconnectDelay)
@@ -307,10 +339,8 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     } else {
       // No user-description descriptor available — fall back to array-index
       // ordering so the initial read has a definitive role to attach to.
-      if characteristicRoles[characteristic] == nil,
-         let index = batteryCharacteristics.firstIndex(of: characteristic) {
-        characteristicRoles[characteristic] = index == 0 ? .central : .peripheral
-      }
+      _ = assignRemainingRoleIfPossible(for: characteristic)
+        || assignRoleByIndexIfNeeded(for: characteristic)
       peripheral.readValue(for: characteristic)
     }
   }
@@ -328,13 +358,13 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
 
     if let error {
       print("[BLEManager] Descriptor read error: \(error.localizedDescription)")
-      // Leave the role unresolved rather than falling back to array-index
-      // ordering. GATT does not guarantee characteristic ordering, so an
-      // index guess would permanently mis-map central/peripheral for any
-      // keyboard whose characteristics happen to be discovered in the
-      // opposite order. The polling timer retries descriptor discovery for
-      // unresolved characteristics, so a transient failure recovers on the
-      // next tick.
+      // Avoid array-order guesses on descriptor read errors. When the peer
+      // role is already known (or there is only one battery characteristic),
+      // resolve from that stable information instead; otherwise leave it
+      // unresolved so a later descriptor retry can determine the role.
+      if assignRemainingRoleIfPossible(for: characteristic) {
+        peripheral.readValue(for: characteristic)
+      }
       return
     }
 
@@ -348,12 +378,12 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     }
 
     if characteristicRoles[characteristic] == nil,
-       let index = batteryCharacteristics.firstIndex(of: characteristic) {
+       !assignRemainingRoleIfPossible(for: characteristic) {
       // Descriptor read succeeded but the value was missing / not a readable
       // string / didn't contain the expected keyword. Unlike the error path,
       // this is "we got a response, it just isn't what we hoped for" — index
       // ordering is an acceptable best-effort in that case.
-      characteristicRoles[characteristic] = index == 0 ? .central : .peripheral
+      _ = assignRoleByIndexIfNeeded(for: characteristic)
     }
 
     peripheral.readValue(for: characteristic)
