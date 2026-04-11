@@ -42,6 +42,13 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   private let appSettings: AppSettings
   private var batteryCharacteristics: [CBCharacteristic] = []
   private var characteristicRoles: [CBCharacteristic: DeviceRole] = [:]
+  // Characteristics whose descriptor-based role resolution has terminally
+  // failed (no user description descriptor, or descriptor discovery / read
+  // failed, or the value was not a recognizable role string). Used by
+  // `assignFallbackRolesForUnresolvedCharacteristicsIfNeeded` to decide when
+  // it's safe to apply array-index ordering as a last resort.
+  private var terminallyFailedCharacteristics: Set<CBCharacteristic> = []
+  private var latestBatteryLevels: [CBCharacteristic: Int] = [:]
   private var pollingTimer: Timer?
   private var reconnectDelay: TimeInterval = 5
   private static let maxReconnectDelay: TimeInterval = 300
@@ -86,6 +93,22 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
 
   func connect(peripheral: CBPeripheral) {
     stopScanning()
+
+    // Cancel any existing connection before overwriting connectedPeripheral.
+    // Without this, the old peripheral stays connected at the BLE layer and
+    // its notify / delegate callbacks can leak into the new keyboard's state.
+    if let existing = connectedPeripheral, existing.identifier != peripheral.identifier {
+      existing.delegate = nil
+      centralManager.cancelPeripheralConnection(existing)
+    }
+    stopPollingTimer()
+    resetCharacteristicState()
+    batteryState.centralConnected = false
+    batteryState.peripheralConnected = false
+    batteryState.centralLevel = nil
+    batteryState.peripheralLevel = nil
+    batteryState.lastUpdated = nil
+
     connectedPeripheral = peripheral
     peripheral.delegate = self
     centralManager.connect(peripheral, options: nil)
@@ -112,6 +135,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   func disconnect() {
     stopPollingTimer()
     if let peripheral = connectedPeripheral {
+      peripheral.delegate = nil
       centralManager.cancelPeripheralConnection(peripheral)
     }
     connectedPeripheral = nil
@@ -121,6 +145,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     batteryState.peripheralConnected = false
     batteryState.centralLevel = nil
     batteryState.peripheralLevel = nil
+    batteryState.lastUpdated = nil
   }
 
   // MARK: - Private Methods
@@ -128,6 +153,8 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   private func resetCharacteristicState() {
     batteryCharacteristics = []
     characteristicRoles = [:]
+    terminallyFailedCharacteristics = []
+    latestBatteryLevels = [:]
   }
 
   private func startPollingTimer() {
@@ -148,7 +175,126 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   private func readAllBatteryCharacteristics() {
     guard let peripheral = connectedPeripheral else { return }
     for characteristic in batteryCharacteristics {
+      if characteristicRoles[characteristic] == nil {
+        // The initial descriptor read failed (or has not completed yet).
+        // Clear the terminal-failure marker and rerun descriptor discovery so
+        // didDiscoverDescriptorsFor / didUpdateValueFor descriptor can try to
+        // resolve the role again, rather than leaving the characteristic
+        // silently unreadable.
+        terminallyFailedCharacteristics.remove(characteristic)
+        peripheral.discoverDescriptors(for: characteristic)
+      }
       peripheral.readValue(for: characteristic)
+    }
+  }
+
+  private func assignRemainingRoleIfPossible(for characteristic: CBCharacteristic) -> Bool {
+    if characteristicRoles[characteristic] != nil {
+      return true
+    }
+
+    if batteryCharacteristics.count == 1 {
+      characteristicRoles[characteristic] = .central
+      return true
+    }
+
+    guard batteryCharacteristics.count == 2,
+          let otherCharacteristic = batteryCharacteristics.first(where: { $0 != characteristic }),
+          let otherRole = characteristicRoles[otherCharacteristic]
+    else {
+      return false
+    }
+
+    characteristicRoles[characteristic] = otherRole == .central ? .peripheral : .central
+    return true
+  }
+
+  private func assignRoleByIndexIfNeeded(for characteristic: CBCharacteristic) -> Bool {
+    guard characteristicRoles[characteristic] == nil,
+          let index = batteryCharacteristics.firstIndex(of: characteristic)
+    else {
+      return false
+    }
+
+    characteristicRoles[characteristic] = index == 0 ? .central : .peripheral
+    return true
+  }
+
+  private func assignFallbackRolesForUnresolvedCharacteristicsIfNeeded() -> Bool {
+    let unresolvedCharacteristics = batteryCharacteristics.filter {
+      characteristicRoles[$0] == nil
+    }
+    guard !unresolvedCharacteristics.isEmpty else { return false }
+
+    if unresolvedCharacteristics.count == 1,
+       assignRemainingRoleIfPossible(for: unresolvedCharacteristics[0]) {
+      return true
+    }
+
+    guard unresolvedCharacteristics.allSatisfy({
+      terminallyFailedCharacteristics.contains($0)
+    }) else {
+      return false
+    }
+
+    var assignedAnyRole = false
+    for characteristic in unresolvedCharacteristics {
+      if assignRemainingRoleIfPossible(for: characteristic) {
+        assignedAnyRole = true
+      } else if assignRoleByIndexIfNeeded(for: characteristic) {
+        assignedAnyRole = true
+      }
+    }
+    return assignedAnyRole
+  }
+
+  // Record that descriptor-based role resolution is terminally done (success
+  // or giving up) for this characteristic and sync the battery state.
+  // `syncBatteryState` runs the cascade, so role inference (either from
+  // stable information or, if every unresolved characteristic has hit a
+  // terminal state, via array-index fallback) happens there.
+  private func markTerminalFailureAndTryResolve(for characteristic: CBCharacteristic) {
+    terminallyFailedCharacteristics.insert(characteristic)
+    syncBatteryState()
+  }
+
+  private func syncBatteryState() {
+    // Cascade any newly-inferable role assignments to unresolved siblings
+    // before rebuilding the UI state. Without this, a characteristic whose
+    // battery level was already cached but whose role gets resolved later
+    // (e.g. the peer's descriptor just succeeded and we can now infer this
+    // one via stable information) would stay blank until the next notify or
+    // poll cycle. Running the helper here centralizes the cascade so every
+    // sync path benefits.
+    _ = assignFallbackRolesForUnresolvedCharacteristicsIfNeeded()
+
+    var centralLevel: Int?
+    var peripheralLevel: Int?
+    var centralConnected = false
+    var peripheralConnected = false
+
+    for characteristic in batteryCharacteristics {
+      guard let role = characteristicRoles[characteristic],
+            let level = latestBatteryLevels[characteristic]
+      else { continue }
+
+      switch role {
+      case .central:
+        centralLevel = level
+        centralConnected = true
+      case .peripheral:
+        peripheralLevel = level
+        peripheralConnected = true
+      }
+    }
+
+    batteryState.centralLevel = centralLevel
+    batteryState.peripheralLevel = peripheralLevel
+    batteryState.centralConnected = centralConnected
+    batteryState.peripheralConnected = peripheralConnected
+
+    if centralConnected || peripheralConnected {
+      batteryState.lastUpdated = Date()
     }
   }
 
@@ -188,6 +334,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   }
 
   func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+    guard peripheral.identifier == connectedPeripheral?.identifier else { return }
     reconnectDelay = 5
     resetCharacteristicState()
     peripheral.discoverServices([Self.batteryServiceUUID])
@@ -199,6 +346,12 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     didDisconnectPeripheral peripheral: CBPeripheral,
     error: Error?
   ) {
+    // Ignore disconnect callbacks for peripherals we have already moved on
+    // from (user-initiated disconnect, or a switch to a different keyboard).
+    // Without this guard, a stale disconnect would wipe the new peripheral's
+    // state and schedule an unwanted reconnect to the old one.
+    guard peripheral.identifier == connectedPeripheral?.identifier else { return }
+
     stopPollingTimer()
     resetCharacteristicState()
     batteryState.centralConnected = false
@@ -214,6 +367,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     didFailToConnect peripheral: CBPeripheral,
     error: Error?
   ) {
+    guard peripheral.identifier == connectedPeripheral?.identifier else { return }
     print("[BLEManager] Failed to connect: \(error?.localizedDescription ?? "unknown error")")
     scheduleReconnect()
   }
@@ -243,9 +397,13 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     guard let characteristics = service.characteristics else { return }
     for characteristic in characteristics {
       batteryCharacteristics.append(characteristic)
-      peripheral.discoverDescriptors(for: characteristic)
       peripheral.setNotifyValue(true, for: characteristic)
-      peripheral.readValue(for: characteristic)
+      peripheral.discoverDescriptors(for: characteristic)
+      // The initial readValue is deferred until the characteristic's role is
+      // known (see didDiscoverDescriptorsFor / didUpdateValueFor descriptor).
+      // Reading here would race descriptor discovery, and since GATT does not
+      // guarantee characteristic ordering, the array-index fallback can map
+      // central/peripheral to the wrong slots until the next polled update.
     }
   }
 
@@ -256,11 +414,24 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   ) {
     if let error {
       print("[BLEManager] Descriptor discovery error: \(error.localizedDescription)")
+      markTerminalFailureAndTryResolve(for: characteristic)
+      peripheral.readValue(for: characteristic)
       return
     }
-    guard let descriptors = characteristic.descriptors else { return }
-    for descriptor in descriptors where descriptor.uuid == Self.characteristicUserDescriptionUUID {
+
+    let userDescriptionDescriptor = characteristic.descriptors?.first { descriptor in
+      descriptor.uuid == Self.characteristicUserDescriptionUUID
+    }
+
+    if let descriptor = userDescriptionDescriptor {
+      // Role is resolved in didUpdateValueFor descriptor, which then triggers
+      // the initial battery read for this characteristic.
       peripheral.readValue(for: descriptor)
+    } else {
+      // No user-description descriptor available — fall back to array-index
+      // ordering so the initial read has a definitive role to attach to.
+      markTerminalFailureAndTryResolve(for: characteristic)
+      peripheral.readValue(for: characteristic)
     }
   }
 
@@ -269,21 +440,35 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     didUpdateValueFor descriptor: CBDescriptor,
     error: Error?
   ) {
-    if let error {
-      print("[BLEManager] Descriptor read error: \(error.localizedDescription)")
-      return
-    }
+    // Only user description descriptors carry role information. Other
+    // descriptors can reach this callback but are not ours to handle.
     guard descriptor.uuid == Self.characteristicUserDescriptionUUID,
-          let characteristic = descriptor.characteristic,
-          let value = descriptor.value as? String
+          let characteristic = descriptor.characteristic
     else { return }
 
-    let lowered = value.lowercased()
-    if lowered.contains("central") {
-      characteristicRoles[characteristic] = .central
-    } else if lowered.contains("peripheral") {
-      characteristicRoles[characteristic] = .peripheral
+    if let error {
+      print("[BLEManager] Descriptor read error: \(error.localizedDescription)")
+      markTerminalFailureAndTryResolve(for: characteristic)
+      peripheral.readValue(for: characteristic)
+      return
     }
+
+    if let value = descriptor.value as? String {
+      let lowered = value.lowercased()
+      if lowered.contains("central") {
+        characteristicRoles[characteristic] = .central
+      } else if lowered.contains("peripheral") {
+        characteristicRoles[characteristic] = .peripheral
+      }
+    }
+
+    if characteristicRoles[characteristic] == nil {
+      markTerminalFailureAndTryResolve(for: characteristic)
+    } else {
+      syncBatteryState()
+    }
+
+    peripheral.readValue(for: characteristic)
   }
 
   func peripheral(
@@ -291,30 +476,16 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     didUpdateValueFor characteristic: CBCharacteristic,
     error: Error?
   ) {
+    guard peripheral.identifier == connectedPeripheral?.identifier else { return }
+
     if let error {
       print("[BLEManager] Battery read error: \(error.localizedDescription)")
       return
     }
     guard let data = characteristic.value, let byte = data.first else { return }
     let level = Int(byte)
+    latestBatteryLevels[characteristic] = level
 
-    let role: DeviceRole
-    if let mapped = characteristicRoles[characteristic] {
-      role = mapped
-    } else if let index = batteryCharacteristics.firstIndex(of: characteristic) {
-      role = index == 0 ? .central : .peripheral
-    } else {
-      role = .central
-    }
-
-    switch role {
-    case .central:
-      batteryState.centralLevel = level
-      batteryState.centralConnected = true
-    case .peripheral:
-      batteryState.peripheralLevel = level
-      batteryState.peripheralConnected = true
-    }
-    batteryState.lastUpdated = Date()
+    syncBatteryState()
   }
 }
