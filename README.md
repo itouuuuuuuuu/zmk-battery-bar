@@ -27,7 +27,7 @@ A macOS menu bar app that displays battery levels from ZMK split keyboards via B
 
 ### ZMK Configuration
 
-To display both Central and Peripheral battery levels, add the following to your Central side's `.conf` file:
+If the Peripheral battery level is not displayed, add the following to your Central side's `.conf` file:
 
 ```ini
 CONFIG_ZMK_BATTERY_REPORTING=y
