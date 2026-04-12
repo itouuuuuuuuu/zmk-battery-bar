@@ -25,6 +25,16 @@ A macOS menu bar app that displays battery levels from ZMK split keyboards via B
 - macOS 14 (Sonoma) or later
 - A ZMK-powered split keyboard with BLE Battery Service enabled
 
+### ZMK Configuration
+
+If the Peripheral battery level is not displayed, add the following to your Central side's `.conf` file:
+
+```ini
+CONFIG_ZMK_BATTERY_REPORTING=y
+CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_PROXY=y
+CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING=y
+```
+
 ## Install
 
 ```sh
