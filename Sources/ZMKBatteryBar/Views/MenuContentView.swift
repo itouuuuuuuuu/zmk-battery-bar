@@ -5,10 +5,12 @@ struct MenuContentView: View {
   @ObservedObject var bleManager: BLEManager
   let appSettings: AppSettings
   let batteryState: BatteryState
+  var onLabelChange: () -> Void = {}
 
   @State private var showKeyboardList = false
   @State private var launchAtLogin = LaunchAtLogin.isEnabled
   @State private var now = Date()
+  @State private var labelStyleTick = 0
 
   private let updateTimer = Timer.publish(every: 10, on: .main, in: .common).autoconnect()
 
@@ -34,6 +36,8 @@ struct MenuContentView: View {
             appSettings.selectedKeyboardUUID = uuid
             bleManager.disconnect()
             bleManager.connectSavedKeyboard()
+            labelStyleTick &+= 1
+            onLabelChange()
           }
         )) {
           ForEach(appSettings.savedKeyboards) { kb in
@@ -52,8 +56,9 @@ struct MenuContentView: View {
 
       Divider()
 
-      batteryRow(label: "Central", level: batteryState.centralLevel)
-      batteryRow(label: "Peripheral", level: batteryState.peripheralLevel)
+      let keyboard = appSettings.selectedKeyboard
+      batteryRow(label: "Central", level: batteryState.centralLevel, side: .central, keyboard: keyboard)
+      batteryRow(label: "Peripheral", level: batteryState.peripheralLevel, side: .peripheral, keyboard: keyboard)
 
       if let lastUpdated = batteryState.lastUpdated {
         Text("Updated: \(timeAgoString(from: lastUpdated))")
@@ -94,7 +99,7 @@ struct MenuContentView: View {
       }
     }
     .padding(12)
-    .frame(width: 250)
+    .frame(width: 260)
   }
 
   private func timeAgoString(from date: Date) -> String {
@@ -108,13 +113,54 @@ struct MenuContentView: View {
     }
   }
 
-  private func batteryRow(label: String, level: Int?) -> some View {
+  private func batteryRow(
+    label: String,
+    level: Int?,
+    side: KeyboardSide,
+    keyboard: KeyboardDevice?
+  ) -> some View {
     HStack(spacing: 2) {
       Text(label)
         .frame(width: 70, alignment: .leading)
       BatteryIconView(level: level)
       Text(level.map { "\($0)%" } ?? "--")
         .monospacedDigit()
+      Spacer()
+      if let keyboard {
+        let current = keyboard.labelStyle == .leftRight ? keyboard.labelShort(for: side) : nil
+        HStack(spacing: 2) {
+          letterButton("L", selected: current == "L") { apply(letter: "L", to: side, for: keyboard.uuid) }
+          letterButton("R", selected: current == "R") { apply(letter: "R", to: side, for: keyboard.uuid) }
+        }
+        .id(labelStyleTick)
+      }
     }
+  }
+
+  private func letterButton(_ letter: String, selected: Bool, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+      Text(letter)
+        .font(.system(size: 10, weight: .semibold, design: .rounded))
+        .frame(width: 16, height: 16)
+        .background(
+          RoundedRectangle(cornerRadius: 4)
+            .fill(selected ? Color.accentColor.opacity(0.25) : Color.clear)
+        )
+        .overlay(
+          RoundedRectangle(cornerRadius: 4)
+            .stroke(selected ? Color.accentColor : Color.secondary.opacity(0.4), lineWidth: 1)
+        )
+        .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+    }
+    .buttonStyle(.plain)
+  }
+
+  private func apply(letter: String, to side: KeyboardSide, for uuid: String) {
+    appSettings.updateKeyboard(uuid: uuid) { device in
+      let current = device.labelStyle == .leftRight ? device.labelShort(for: side) : nil
+      device.assignLetter(current == letter ? nil : letter, to: side)
+    }
+    labelStyleTick &+= 1
+    onLabelChange()
   }
 }

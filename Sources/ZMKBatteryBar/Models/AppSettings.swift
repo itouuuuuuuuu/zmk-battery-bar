@@ -40,6 +40,13 @@ final class AppSettings {
     }
   }
 
+  func updateKeyboard(uuid: String, mutate: (inout KeyboardDevice) -> Void) {
+    var keyboards = savedKeyboards
+    guard let idx = keyboards.firstIndex(where: { $0.uuid == uuid }) else { return }
+    mutate(&keyboards[idx])
+    savedKeyboards = keyboards
+  }
+
   func removeKeyboard(uuid: String) {
     var keyboards = savedKeyboards
     keyboards.removeAll { $0.uuid == uuid }
