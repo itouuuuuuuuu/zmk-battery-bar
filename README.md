@@ -17,6 +17,7 @@ A macOS menu bar app that displays battery levels from ZMK split keyboards via B
 - **BLE Battery Service** — Reads battery levels via standard BLE Battery Service (0x180F) with notification subscription
 - **Auto Central/Peripheral detection** — Uses BLE descriptor (User Description) to identify each half of the split keyboard
 - **Multiple keyboard support** — Register and switch between multiple ZMK keyboards
+- **Customizable side labels** — Override the default `C` / `P` menu bar labels with `L` / `R` per keyboard to match your physical left/right layout
 - **Auto-reconnect** — Automatically reconnects with exponential backoff when the keyboard disconnects
 - **Launch at Login** — Optional auto-start via SMAppService
 
@@ -38,6 +39,16 @@ brew install --cask itouuuuuuuuu/tap/zmk-battery-bar
 3. If no keyboard is connected, click **Add Keyboard...** to scan for BLE devices
 4. Select your ZMK keyboard from the discovered devices list
 5. Battery levels update automatically via BLE notifications
+
+### Customizing side labels
+
+The menu bar shows `C` (Central) and `P` (Peripheral) by default. To display `L` / `R` instead:
+
+1. Open the popover and locate the `[ L ][ R ]` buttons on the right of each battery row
+2. Tap `L` or `R` on the **Central** row to assign that letter to the central side (the peripheral row flips automatically)
+3. Tap the same letter again to revert to `C` / `P`
+
+Labels are stored per keyboard, so each registered keyboard keeps its own assignment.
 
 ## How It Works
 

@@ -2,11 +2,19 @@ import SwiftUI
 
 struct StatusBarView: View {
   let batteryState: BatteryState
+  let centralLabel: String
+  let peripheralLabel: String
+
+  init(batteryState: BatteryState, centralLabel: String = "C", peripheralLabel: String = "P") {
+    self.batteryState = batteryState
+    self.centralLabel = centralLabel
+    self.peripheralLabel = peripheralLabel
+  }
 
   var body: some View {
     VStack(spacing: 0) {
-      row(label: "C", level: batteryState.centralLevel)
-      row(label: "P", level: batteryState.peripheralLevel)
+      row(label: centralLabel, level: batteryState.centralLevel)
+      row(label: peripheralLabel, level: batteryState.peripheralLevel)
     }
     .frame(height: 22)
     .allowsHitTesting(false)
