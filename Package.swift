@@ -15,5 +15,13 @@ let package = Package(
         .swiftLanguageMode(.v6),
       ]
     ),
+    .testTarget(
+      name: "ZMKBatteryBarTests",
+      dependencies: ["ZMKBatteryBar"],
+      path: "Tests/ZMKBatteryBarTests",
+      swiftSettings: [
+        .swiftLanguageMode(.v6),
+      ]
+    ),
   ]
 )

@@ -15,8 +15,8 @@ struct StatusBarView: View {
 
   var body: some View {
     let digits = max(
-      digitCount(for: batteryState.centralLevel),
-      digitCount(for: batteryState.peripheralLevel)
+      StatusBarLayout.digitCount(for: batteryState.centralLevel),
+      StatusBarLayout.digitCount(for: batteryState.peripheralLevel)
     )
     VStack(spacing: 0) {
       row(label: centralLabel, level: batteryState.centralLevel, digits: digits)
@@ -45,9 +45,5 @@ struct StatusBarView: View {
       Text(actual)
     }
     .font(Self.labelFont.monospacedDigit())
-  }
-
-  private func digitCount(for level: Int?) -> Int {
-    level.map { String($0).count } ?? 2
   }
 }
