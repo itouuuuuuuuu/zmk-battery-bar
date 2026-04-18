@@ -144,13 +144,18 @@ final class StatusBarPanel: NSPanel {
     hasShadow = true
     isOpaque = false
 
+    let containerView = NSView()
+    containerView.wantsLayer = true
+    containerView.layer?.cornerRadius = 12
+    containerView.layer?.masksToBounds = true
+
     let visualEffect = NSVisualEffectView()
     visualEffect.material = .popover
     visualEffect.state = .active
     visualEffect.blendingMode = .behindWindow
-    visualEffect.wantsLayer = true
-    visualEffect.layer?.cornerRadius = 12
-    visualEffect.layer?.masksToBounds = true
+    visualEffect.frame = containerView.bounds
+    visualEffect.autoresizingMask = [.width, .height]
+    containerView.addSubview(visualEffect)
 
     let hostingView = NSHostingView(rootView: content)
     hostingView.translatesAutoresizingMaskIntoConstraints = false
@@ -162,7 +167,7 @@ final class StatusBarPanel: NSPanel {
       hostingView.trailingAnchor.constraint(equalTo: visualEffect.trailingAnchor),
     ])
 
-    contentView = visualEffect
+    contentView = containerView
   }
 
   override var canBecomeKey: Bool { true }
