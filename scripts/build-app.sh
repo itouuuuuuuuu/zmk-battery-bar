@@ -3,7 +3,7 @@ set -euo pipefail
 
 EXECUTABLE_NAME="ZMKBatteryBar"
 DISPLAY_NAME="ZMK Battery Bar"
-BUILD_DIR=".build/release"
+ARCHS=("arm64" "x86_64")
 APP_DIR="build/${DISPLAY_NAME}.app"
 CONTENTS_DIR="${APP_DIR}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
@@ -15,14 +15,23 @@ SIGN_IDENTITY="${1:--}"
 # Version: pass as second argument, or skip version injection
 VERSION="${2:-}"
 
-echo "Building ${EXECUTABLE_NAME} in release mode..."
-swift build -c release
+echo "Building ${EXECUTABLE_NAME} as universal binary (${ARCHS[*]})..."
+BIN_PATHS=()
+for ARCH in "${ARCHS[@]}"; do
+  echo "  -> ${ARCH}"
+  swift build -c release --arch "${ARCH}"
+  BIN_DIR="$(swift build -c release --arch "${ARCH}" --show-bin-path)"
+  BIN_PATHS+=("${BIN_DIR}/${EXECUTABLE_NAME}")
+done
 
 echo "Creating app bundle..."
 rm -rf "${APP_DIR}"
 mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 
-cp "${BUILD_DIR}/${EXECUTABLE_NAME}" "${MACOS_DIR}/"
+echo "Combining slices into universal binary with lipo..."
+lipo -create "${BIN_PATHS[@]}" -output "${MACOS_DIR}/${EXECUTABLE_NAME}"
+lipo -info "${MACOS_DIR}/${EXECUTABLE_NAME}"
+
 cp Resources/Info.plist "${CONTENTS_DIR}/Info.plist"
 cp Resources/AppIcon.icns "${RESOURCES_DIR}/AppIcon.icns"
 
