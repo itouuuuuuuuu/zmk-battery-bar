@@ -61,7 +61,7 @@ struct MenuContentView: View {
       batteryRow(label: "Peripheral", level: batteryState.peripheralLevel, side: .peripheral, keyboard: keyboard)
 
       if let lastUpdated = batteryState.lastUpdated {
-        Text("Updated: \(timeAgoString(from: lastUpdated))")
+        Text("Updated: \(TimeAgoFormatter.format(from: lastUpdated, now: now))")
           .font(.caption)
           .foregroundStyle(.secondary)
           .onReceive(updateTimer) { now = $0 }
@@ -100,17 +100,6 @@ struct MenuContentView: View {
     }
     .padding(12)
     .frame(width: 260)
-  }
-
-  private func timeAgoString(from date: Date) -> String {
-    let seconds = Int(now.timeIntervalSince(date))
-    if seconds < 60 {
-      return "\(max(seconds, 0))s ago"
-    } else if seconds < 3600 {
-      return "\(seconds / 60)m ago"
-    } else {
-      return "\(seconds / 3600)h ago"
-    }
   }
 
   private func batteryRow(

@@ -188,64 +188,12 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     }
   }
 
-  private func assignRemainingRoleIfPossible(for characteristic: CBCharacteristic) -> Bool {
-    if characteristicRoles[characteristic] != nil {
-      return true
-    }
-
-    if batteryCharacteristics.count == 1 {
-      characteristicRoles[characteristic] = .central
-      return true
-    }
-
-    guard batteryCharacteristics.count == 2,
-          let otherCharacteristic = batteryCharacteristics.first(where: { $0 != characteristic }),
-          let otherRole = characteristicRoles[otherCharacteristic]
-    else {
-      return false
-    }
-
-    characteristicRoles[characteristic] = otherRole == .central ? .peripheral : .central
-    return true
-  }
-
-  private func assignRoleByIndexIfNeeded(for characteristic: CBCharacteristic) -> Bool {
-    guard characteristicRoles[characteristic] == nil,
-          let index = batteryCharacteristics.firstIndex(of: characteristic)
-    else {
-      return false
-    }
-
-    characteristicRoles[characteristic] = index == 0 ? .central : .peripheral
-    return true
-  }
-
-  private func assignFallbackRolesForUnresolvedCharacteristicsIfNeeded() -> Bool {
-    let unresolvedCharacteristics = batteryCharacteristics.filter {
-      characteristicRoles[$0] == nil
-    }
-    guard !unresolvedCharacteristics.isEmpty else { return false }
-
-    if unresolvedCharacteristics.count == 1,
-       assignRemainingRoleIfPossible(for: unresolvedCharacteristics[0]) {
-      return true
-    }
-
-    guard unresolvedCharacteristics.allSatisfy({
-      terminallyFailedCharacteristics.contains($0)
-    }) else {
-      return false
-    }
-
-    var assignedAnyRole = false
-    for characteristic in unresolvedCharacteristics {
-      if assignRemainingRoleIfPossible(for: characteristic) {
-        assignedAnyRole = true
-      } else if assignRoleByIndexIfNeeded(for: characteristic) {
-        assignedAnyRole = true
-      }
-    }
-    return assignedAnyRole
+  private func applyFallbackRoleAssignments() {
+    characteristicRoles = RoleAssigner.assignFallbackRoles(
+      allCharacteristics: batteryCharacteristics,
+      roles: characteristicRoles,
+      terminallyFailed: terminallyFailedCharacteristics
+    )
   }
 
   // Record that descriptor-based role resolution is terminally done (success
@@ -266,41 +214,30 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     // one via stable information) would stay blank until the next notify or
     // poll cycle. Running the helper here centralizes the cascade so every
     // sync path benefits.
-    _ = assignFallbackRolesForUnresolvedCharacteristicsIfNeeded()
+    applyFallbackRoleAssignments()
 
-    var centralLevel: Int?
-    var peripheralLevel: Int?
-    var centralConnected = false
-    var peripheralConnected = false
+    let snapshot = BatteryStateComposer.compose(
+      allCharacteristics: batteryCharacteristics,
+      roles: characteristicRoles,
+      levels: latestBatteryLevels
+    )
 
-    for characteristic in batteryCharacteristics {
-      guard let role = characteristicRoles[characteristic],
-            let level = latestBatteryLevels[characteristic]
-      else { continue }
+    batteryState.centralLevel = snapshot.centralLevel
+    batteryState.peripheralLevel = snapshot.peripheralLevel
+    batteryState.centralConnected = snapshot.centralConnected
+    batteryState.peripheralConnected = snapshot.peripheralConnected
 
-      switch role {
-      case .central:
-        centralLevel = level
-        centralConnected = true
-      case .peripheral:
-        peripheralLevel = level
-        peripheralConnected = true
-      }
-    }
-
-    batteryState.centralLevel = centralLevel
-    batteryState.peripheralLevel = peripheralLevel
-    batteryState.centralConnected = centralConnected
-    batteryState.peripheralConnected = peripheralConnected
-
-    if centralConnected || peripheralConnected {
+    if snapshot.shouldUpdateTimestamp {
       batteryState.lastUpdated = Date()
     }
   }
 
   private func scheduleReconnect() {
     let delay = reconnectDelay
-    reconnectDelay = min(reconnectDelay * 2, Self.maxReconnectDelay)
+    reconnectDelay = ReconnectBackoff.nextDelay(
+      current: reconnectDelay,
+      cap: Self.maxReconnectDelay
+    )
 
     DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
       self?.connectSavedKeyboard()
@@ -453,13 +390,8 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
       return
     }
 
-    if let value = descriptor.value as? String {
-      let lowered = value.lowercased()
-      if lowered.contains("central") {
-        characteristicRoles[characteristic] = .central
-      } else if lowered.contains("peripheral") {
-        characteristicRoles[characteristic] = .peripheral
-      }
+    if let role = DescriptorRoleParser.role(from: descriptor.value as? String) {
+      characteristicRoles[characteristic] = role
     }
 
     if characteristicRoles[characteristic] == nil {
@@ -482,8 +414,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
       print("[BLEManager] Battery read error: \(error.localizedDescription)")
       return
     }
-    guard let data = characteristic.value, let byte = data.first else { return }
-    let level = Int(byte)
+    guard let level = BatteryPayload.parseLevel(from: characteristic.value) else { return }
     latestBatteryLevels[characteristic] = level
 
     syncBatteryState()
