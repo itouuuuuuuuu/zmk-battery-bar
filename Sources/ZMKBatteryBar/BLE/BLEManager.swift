@@ -129,18 +129,28 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   }
 
   func disconnect() {
-    stopPollingTimer()
-    if let peripheral = connectedPeripheral {
-      peripheral.delegate = nil
-      centralManager.cancelPeripheralConnection(peripheral)
-    }
-    connectedPeripheral = nil
+    tearDownConnection()
     reconnectDelay = 5
-    resetCharacteristicState()
-    batteryState.reset()
   }
 
   // MARK: - Private Methods
+
+  /// Detach the current peripheral and clear all derived state. Skips
+  /// `cancelPeripheralConnection` when the central is not powered on so we
+  /// don't trigger CoreBluetooth's "API MISUSE" warning during a
+  /// Bluetooth-off teardown — the radio has already torn the link down.
+  private func tearDownConnection() {
+    stopPollingTimer()
+    if let peripheral = connectedPeripheral {
+      peripheral.delegate = nil
+      if centralManager.state == .poweredOn {
+        centralManager.cancelPeripheralConnection(peripheral)
+      }
+    }
+    connectedPeripheral = nil
+    resetCharacteristicState()
+    batteryState.reset()
+  }
 
   private func resetCharacteristicState() {
     batteryCharacteristics = []
@@ -243,6 +253,12 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     bluetoothState = central.state
     if central.state == .poweredOn {
       connectSavedKeyboard()
+    } else {
+      // Bluetooth was turned off / reset / unauthorized. CoreBluetooth will
+      // not deliver a per-peripheral disconnect callback in this case, so
+      // wipe state explicitly to surface the disconnected condition (`--`)
+      // instead of leaving the last cached battery levels on screen.
+      tearDownConnection()
     }
   }
 

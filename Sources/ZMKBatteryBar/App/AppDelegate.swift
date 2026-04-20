@@ -78,10 +78,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   @MainActor private func currentStatusBarRows() -> [StatusBarRow] {
+    let stale = batteryState.isStale()
+
     guard let kb = appSettings.selectedKeyboard else {
       return [
-        StatusBarRow(label: "C", level: batteryState.centralLevel),
-        StatusBarRow(label: "P", level: batteryState.peripheralLevel),
+        StatusBarRow(label: "C", level: stale ? nil : batteryState.centralLevel),
+        StatusBarRow(label: "P", level: stale ? nil : batteryState.peripheralLevel),
       ]
     }
 
@@ -90,14 +92,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Multi-peripheral with valid custom labels → show only labeled peripherals
     if peripheralCount > 1, kb.hasValidPeripheralLabels(count: peripheralCount) {
       return batteryState.peripherals.prefix(2).enumerated().map { i, p in
-        StatusBarRow(label: kb.peripheralLabels[i], level: p.level)
+        StatusBarRow(label: kb.peripheralLabels[i], level: stale ? nil : p.level)
       }
     }
 
     // Default / legacy: Central + first peripheral
     return [
-      StatusBarRow(label: kb.centralLabelShort, level: batteryState.centralLevel),
-      StatusBarRow(label: kb.peripheralLabelShort, level: batteryState.peripheralLevel),
+      StatusBarRow(label: kb.centralLabelShort, level: stale ? nil : batteryState.centralLevel),
+      StatusBarRow(label: kb.peripheralLabelShort, level: stale ? nil : batteryState.peripheralLevel),
     ]
   }
 

@@ -57,10 +57,11 @@ struct MenuContentView: View {
       Divider()
 
       let keyboard = appSettings.selectedKeyboard
-      batteryRow(label: "Central", level: batteryState.centralLevel, peripheralIndex: nil, keyboard: keyboard)
+      let stale = batteryState.isStale(now: now)
+      batteryRow(label: "Central", level: stale ? nil : batteryState.centralLevel, peripheralIndex: nil, keyboard: keyboard)
       ForEach(batteryState.peripherals) { p in
         let label = batteryState.peripherals.count > 1 ? "Peripheral \(p.index + 1)" : "Peripheral"
-        batteryRow(label: label, level: p.level, peripheralIndex: p.index, keyboard: keyboard)
+        batteryRow(label: label, level: stale ? nil : p.level, peripheralIndex: p.index, keyboard: keyboard)
       }
 
       if let lastUpdated = batteryState.lastUpdated {
