@@ -14,6 +14,7 @@ struct BatteryStateTests {
     #expect(state.peripheralLevel == nil)
     #expect(state.centralConnected == false)
     #expect(state.peripheralConnected == false)
+    #expect(state.peripherals.isEmpty)
     #expect(state.lastUpdated == nil)
   }
 
@@ -23,15 +24,53 @@ struct BatteryStateTests {
     let now = Date()
 
     state.centralLevel = 80
-    state.peripheralLevel = 50
     state.centralConnected = true
-    state.peripheralConnected = true
+    state.peripherals = [
+      PeripheralBattery(index: 0, level: 50, connected: true),
+      PeripheralBattery(index: 1, level: 30, connected: true),
+    ]
     state.lastUpdated = now
 
     #expect(state.centralLevel == 80)
     #expect(state.peripheralLevel == 50)
     #expect(state.centralConnected == true)
     #expect(state.peripheralConnected == true)
+    #expect(state.peripherals.count == 2)
+    #expect(state.peripherals[1].level == 30)
     #expect(state.lastUpdated == now)
+  }
+
+  @Test("computed peripheralLevel returns first peripheral")
+  func computedPeripheralLevel() {
+    let state = BatteryState()
+    state.peripherals = [
+      PeripheralBattery(index: 0, level: 60, connected: true),
+      PeripheralBattery(index: 1, level: 40, connected: true),
+    ]
+    #expect(state.peripheralLevel == 60)
+    #expect(state.peripheralConnected == true)
+  }
+
+  @Test("computed peripheralLevel is nil when no peripherals")
+  func computedPeripheralLevelEmpty() {
+    let state = BatteryState()
+    #expect(state.peripheralLevel == nil)
+    #expect(state.peripheralConnected == false)
+  }
+
+  @Test("reset clears all state")
+  func resetClearsState() {
+    let state = BatteryState()
+    state.centralLevel = 80
+    state.centralConnected = true
+    state.peripherals = [PeripheralBattery(index: 0, level: 50, connected: true)]
+    state.lastUpdated = Date()
+
+    state.reset()
+
+    #expect(state.centralLevel == nil)
+    #expect(state.centralConnected == false)
+    #expect(state.peripherals.isEmpty)
+    #expect(state.lastUpdated == nil)
   }
 }

@@ -63,8 +63,28 @@ struct RoleAssignerTests {
     #expect(role == nil)
   }
 
-  @Test("three or more characteristics → nil (out of supported shape)")
-  func remainingNilForThreeOrMore() {
+  @Test("three characteristics, one unresolved with known central → infers peripheral")
+  func remainingInfersPeripheralFromCentralInThree() {
+    let role = RoleAssigner.remainingRole(
+      target: a,
+      allCharacteristics: [a, b, c],
+      roles: [b: .central, c: .peripheral]
+    )
+    #expect(role == .peripheral)
+  }
+
+  @Test("three characteristics, one unresolved with no central → infers central")
+  func remainingInfersCentralInThreeNoCentral() {
+    let role = RoleAssigner.remainingRole(
+      target: a,
+      allCharacteristics: [a, b, c],
+      roles: [b: .peripheral, c: .peripheral]
+    )
+    #expect(role == .central)
+  }
+
+  @Test("three characteristics, two unresolved → nil")
+  func remainingNilWhenTwoUnresolved() {
     let role = RoleAssigner.remainingRole(
       target: a,
       allCharacteristics: [a, b, c],

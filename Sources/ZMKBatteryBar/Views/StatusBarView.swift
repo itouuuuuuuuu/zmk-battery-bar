@@ -1,26 +1,21 @@
 import SwiftUI
 
+struct StatusBarRow: Equatable {
+  let label: String
+  let level: Int?
+}
+
 struct StatusBarView: View {
-  let batteryState: BatteryState
-  let centralLabel: String
-  let peripheralLabel: String
+  let rows: [StatusBarRow]
 
   private static let labelFont = Font.system(size: 11, weight: .semibold, design: .rounded)
 
-  init(batteryState: BatteryState, centralLabel: String = "C", peripheralLabel: String = "P") {
-    self.batteryState = batteryState
-    self.centralLabel = centralLabel
-    self.peripheralLabel = peripheralLabel
-  }
-
   var body: some View {
-    let digits = max(
-      StatusBarLayout.digitCount(for: batteryState.centralLevel),
-      StatusBarLayout.digitCount(for: batteryState.peripheralLevel)
-    )
+    let digits = rows.map { StatusBarLayout.digitCount(for: $0.level) }.max() ?? 2
     VStack(spacing: 0) {
-      row(label: centralLabel, level: batteryState.centralLevel, digits: digits)
-      row(label: peripheralLabel, level: batteryState.peripheralLevel, digits: digits)
+      ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+        self.row(label: row.label, level: row.level, digits: digits)
+      }
     }
     .font(Self.labelFont)
     .frame(height: 22)

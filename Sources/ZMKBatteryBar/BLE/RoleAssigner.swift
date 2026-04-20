@@ -4,7 +4,7 @@ enum RoleAssigner {
   /// Infers the role for `target` when it has no explicit role yet.
   /// Returns the existing role unchanged if already assigned.
   /// Returns nil when the target is not in `allCharacteristics`, or when
-  /// its sibling's role is still unknown.
+  /// there is not enough information to infer a role.
   static func remainingRole<Key: Hashable>(
     target: Key,
     allCharacteristics: [Key],
@@ -19,14 +19,11 @@ enum RoleAssigner {
       return .central
     }
 
-    guard allCharacteristics.count == 2,
-          let other = allCharacteristics.first(where: { $0 != target }),
-          let otherRole = roles[other]
-    else {
-      return nil
-    }
+    let unresolved = allCharacteristics.filter { roles[$0] == nil }
+    guard unresolved.count == 1, unresolved[0] == target else { return nil }
 
-    return otherRole == .central ? .peripheral : .central
+    let hasCentral = roles.values.contains(.central)
+    return hasCentral ? .peripheral : .central
   }
 
   /// Array-index fallback: first characteristic is central, any subsequent one
