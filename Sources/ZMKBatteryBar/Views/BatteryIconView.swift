@@ -33,5 +33,6 @@ struct BatteryIconView: View {
       context.fill(nubPath, with: .color(color.opacity(0.8)))
     }
     .frame(width: size.width, height: size.height)
+    .drawingGroup()
   }
 }
