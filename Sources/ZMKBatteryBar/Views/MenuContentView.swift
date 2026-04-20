@@ -57,8 +57,11 @@ struct MenuContentView: View {
       Divider()
 
       let keyboard = appSettings.selectedKeyboard
-      batteryRow(label: "Central", level: batteryState.centralLevel, side: .central, keyboard: keyboard)
-      batteryRow(label: "Peripheral", level: batteryState.peripheralLevel, side: .peripheral, keyboard: keyboard)
+      batteryRow(label: "Central", level: batteryState.centralLevel, peripheralIndex: nil, keyboard: keyboard)
+      ForEach(batteryState.peripherals) { p in
+        let label = batteryState.peripherals.count > 1 ? "Peripheral \(p.index + 1)" : "Peripheral"
+        batteryRow(label: label, level: p.level, peripheralIndex: p.index, keyboard: keyboard)
+      }
 
       if let lastUpdated = batteryState.lastUpdated {
         Text("Updated: \(TimeAgoFormatter.format(from: lastUpdated, now: now))")
@@ -105,23 +108,36 @@ struct MenuContentView: View {
   private func batteryRow(
     label: String,
     level: Int?,
-    side: KeyboardSide,
+    peripheralIndex: Int?,
     keyboard: KeyboardDevice?
   ) -> some View {
     HStack(spacing: 2) {
       Text(label)
-        .frame(width: 70, alignment: .leading)
+        .lineLimit(1)
+        .frame(width: 85, alignment: .leading)
       BatteryIconView(level: level)
       Text(level.map { "\($0)%" } ?? "--")
         .monospacedDigit()
       Spacer()
       if let keyboard {
-        let current = keyboard.labelStyle == .leftRight ? keyboard.labelShort(for: side) : nil
-        HStack(spacing: 2) {
-          letterButton("L", selected: current == "L") { apply(letter: "L", to: side, for: keyboard.uuid) }
-          letterButton("R", selected: current == "R") { apply(letter: "R", to: side, for: keyboard.uuid) }
+        if batteryState.peripherals.count <= 1 {
+          // Legacy 1-peripheral: L/R toggles central/peripheral together
+          let side: KeyboardSide = peripheralIndex != nil ? .peripheral : .central
+          let current = keyboard.labelStyle == .leftRight ? keyboard.labelShort(for: side) : nil
+          HStack(spacing: 2) {
+            letterButton("L", selected: current == "L") { applyLegacy(letter: "L", to: side, for: keyboard.uuid) }
+            letterButton("R", selected: current == "R") { applyLegacy(letter: "R", to: side, for: keyboard.uuid) }
+          }
+          .id(labelStyleTick)
+        } else if let index = peripheralIndex {
+          // Multi-peripheral: L/R per peripheral
+          let current = index < keyboard.peripheralLabels.count ? keyboard.peripheralLabels[index] : ""
+          HStack(spacing: 2) {
+            letterButton("L", selected: current == "L") { applyPeripheralLabel("L", at: index, for: keyboard.uuid, current: current) }
+            letterButton("R", selected: current == "R") { applyPeripheralLabel("R", at: index, for: keyboard.uuid, current: current) }
+          }
+          .id(labelStyleTick)
         }
-        .id(labelStyleTick)
       }
     }
   }
@@ -144,10 +160,18 @@ struct MenuContentView: View {
     .buttonStyle(.plain)
   }
 
-  private func apply(letter: String, to side: KeyboardSide, for uuid: String) {
+  private func applyLegacy(letter: String, to side: KeyboardSide, for uuid: String) {
     appSettings.updateKeyboard(uuid: uuid) { device in
       let current = device.labelStyle == .leftRight ? device.labelShort(for: side) : nil
       device.assignLetter(current == letter ? nil : letter, to: side)
+    }
+    labelStyleTick &+= 1
+    onLabelChange()
+  }
+
+  private func applyPeripheralLabel(_ letter: String, at index: Int, for uuid: String, current: String) {
+    appSettings.updateKeyboard(uuid: uuid) { device in
+      device.assignPeripheralLabel(current == letter ? nil : letter, at: index)
     }
     labelStyleTick &+= 1
     onLabelChange()

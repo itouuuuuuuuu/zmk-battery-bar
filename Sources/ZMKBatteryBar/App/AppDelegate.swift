@@ -10,16 +10,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private let appSettings = AppSettings()
   private var bleManager: BLEManager!
 
-  private var lastRenderedCentral: Int?
-  private var lastRenderedPeripheral: Int?
-  private var lastRenderedCentralLabel: String?
-  private var lastRenderedPeripheralLabel: String?
+  private var lastRenderedRows: [StatusBarRow] = []
   private var renderTimer: Timer?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     bleManager = BLEManager(batteryState: batteryState, appSettings: appSettings)
 
-    statusItem = NSStatusBar.system.statusItem(withLength: 52)
+    statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
     if let button = statusItem.button {
       button.action = #selector(togglePanel(_:))
@@ -55,32 +52,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   // MARK: - Status bar rendering
 
   @MainActor private func updateButtonImageIfNeeded() {
-    let labels = currentStatusBarLabels()
-    guard batteryState.centralLevel != lastRenderedCentral
-       || batteryState.peripheralLevel != lastRenderedPeripheral
-       || labels.central != lastRenderedCentralLabel
-       || labels.peripheral != lastRenderedPeripheralLabel
-    else { return }
-    renderStatusBar(labels: labels)
+    let rows = currentStatusBarRows()
+    guard rows != lastRenderedRows else { return }
+    renderStatusBar(rows: rows)
   }
 
   @MainActor func updateButtonImage() {
-    renderStatusBar(labels: currentStatusBarLabels())
+    renderStatusBar(rows: currentStatusBarRows())
   }
 
-  @MainActor private func renderStatusBar(labels: (central: String, peripheral: String)) {
+  @MainActor private func renderStatusBar(rows: [StatusBarRow]) {
     guard let button = statusItem.button else { return }
 
-    lastRenderedCentral = batteryState.centralLevel
-    lastRenderedPeripheral = batteryState.peripheralLevel
-    lastRenderedCentralLabel = labels.central
-    lastRenderedPeripheralLabel = labels.peripheral
+    lastRenderedRows = rows
 
-    let renderer = ImageRenderer(content: StatusBarView(
-      batteryState: batteryState,
-      centralLabel: labels.central,
-      peripheralLabel: labels.peripheral
-    ))
+    let renderer = ImageRenderer(content: StatusBarView(rows: rows))
     renderer.scale = NSScreen.main?.backingScaleFactor ?? 2.0
 
     guard let cgImage = renderer.cgImage else { return }
@@ -91,11 +77,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     button.image = image
   }
 
-  @MainActor private func currentStatusBarLabels() -> (central: String, peripheral: String) {
-    if let kb = appSettings.selectedKeyboard {
-      return (kb.centralLabelShort, kb.peripheralLabelShort)
+  @MainActor private func currentStatusBarRows() -> [StatusBarRow] {
+    guard let kb = appSettings.selectedKeyboard else {
+      return [
+        StatusBarRow(label: "C", level: batteryState.centralLevel),
+        StatusBarRow(label: "P", level: batteryState.peripheralLevel),
+      ]
     }
-    return ("C", "P")
+
+    let peripheralCount = batteryState.peripherals.count
+
+    // Multi-peripheral with valid custom labels → show only labeled peripherals
+    if peripheralCount > 1, kb.hasValidPeripheralLabels(count: peripheralCount) {
+      return batteryState.peripherals.prefix(2).enumerated().map { i, p in
+        StatusBarRow(label: kb.peripheralLabels[i], level: p.level)
+      }
+    }
+
+    // Default / legacy: Central + first peripheral
+    return [
+      StatusBarRow(label: kb.centralLabelShort, level: batteryState.centralLevel),
+      StatusBarRow(label: kb.peripheralLabelShort, level: batteryState.peripheralLevel),
+    ]
   }
 
   // MARK: - Panel
