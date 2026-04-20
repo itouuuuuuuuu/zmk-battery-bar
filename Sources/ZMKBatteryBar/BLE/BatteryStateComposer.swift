@@ -1,16 +1,25 @@
 import Foundation
 
+struct PeripheralBatterySnapshot: Equatable {
+  var level: Int?
+  var connected: Bool
+}
+
 struct BatteryStateSnapshot: Equatable {
   var centralLevel: Int?
-  var peripheralLevel: Int?
   var centralConnected: Bool
-  var peripheralConnected: Bool
+  var peripherals: [PeripheralBatterySnapshot]
 
   /// True iff at least one side has a (role, level) pair. Callers use this to
   /// decide whether to refresh the `lastUpdated` timestamp.
   var shouldUpdateTimestamp: Bool {
-    centralConnected || peripheralConnected
+    centralConnected || peripherals.contains { $0.connected }
   }
+
+  /// First peripheral's level — backward-compat helper for tests.
+  var peripheralLevel: Int? { peripherals.first?.level }
+  /// First peripheral's connected state.
+  var peripheralConnected: Bool { peripherals.first?.connected ?? false }
 }
 
 enum BatteryStateComposer {
@@ -19,28 +28,26 @@ enum BatteryStateComposer {
     roles: [Key: DeviceRole],
     levels: [Key: Int]
   ) -> BatteryStateSnapshot {
-    var central: Int?
-    var peripheral: Int?
+    var centralLevel: Int?
     var centralConnected = false
-    var peripheralConnected = false
+    var peripheralLevels: [(level: Int?, connected: Bool)] = []
 
     for key in allCharacteristics {
-      guard let role = roles[key], let level = levels[key] else { continue }
+      guard let role = roles[key] else { continue }
+      let level = levels[key]
       switch role {
       case .central:
-        central = level
-        centralConnected = true
+        centralLevel = level
+        centralConnected = level != nil
       case .peripheral:
-        peripheral = level
-        peripheralConnected = true
+        peripheralLevels.append((level: level, connected: level != nil))
       }
     }
 
     return BatteryStateSnapshot(
-      centralLevel: central,
-      peripheralLevel: peripheral,
+      centralLevel: centralLevel,
       centralConnected: centralConnected,
-      peripheralConnected: peripheralConnected
+      peripherals: peripheralLevels.map { PeripheralBatterySnapshot(level: $0.level, connected: $0.connected) }
     )
   }
 }

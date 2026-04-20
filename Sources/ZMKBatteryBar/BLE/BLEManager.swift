@@ -103,11 +103,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     }
     stopPollingTimer()
     resetCharacteristicState()
-    batteryState.centralConnected = false
-    batteryState.peripheralConnected = false
-    batteryState.centralLevel = nil
-    batteryState.peripheralLevel = nil
-    batteryState.lastUpdated = nil
+    batteryState.reset()
 
     connectedPeripheral = peripheral
     peripheral.delegate = self
@@ -141,11 +137,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     connectedPeripheral = nil
     reconnectDelay = 5
     resetCharacteristicState()
-    batteryState.centralConnected = false
-    batteryState.peripheralConnected = false
-    batteryState.centralLevel = nil
-    batteryState.peripheralLevel = nil
-    batteryState.lastUpdated = nil
+    batteryState.reset()
   }
 
   // MARK: - Private Methods
@@ -223,9 +215,10 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     )
 
     batteryState.centralLevel = snapshot.centralLevel
-    batteryState.peripheralLevel = snapshot.peripheralLevel
     batteryState.centralConnected = snapshot.centralConnected
-    batteryState.peripheralConnected = snapshot.peripheralConnected
+    batteryState.peripherals = snapshot.peripherals.enumerated().map { i, p in
+      PeripheralBattery(index: i, level: p.level, connected: p.connected)
+    }
 
     if snapshot.shouldUpdateTimestamp {
       batteryState.lastUpdated = Date()
@@ -291,11 +284,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
 
     stopPollingTimer()
     resetCharacteristicState()
-    batteryState.centralConnected = false
-    batteryState.peripheralConnected = false
-    batteryState.centralLevel = nil
-    batteryState.peripheralLevel = nil
-    batteryState.lastUpdated = nil
+    batteryState.reset()
     scheduleReconnect()
   }
 
