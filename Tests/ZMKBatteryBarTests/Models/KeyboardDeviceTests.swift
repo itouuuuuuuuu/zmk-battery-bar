@@ -13,7 +13,8 @@ struct KeyboardDeviceTests {
       uuid: "abc",
       name: "Corne",
       labelStyle: .leftRight,
-      swapSides: true
+      swapSides: true,
+      peripheralLabels: ["L", "R"]
     )
     let data = try JSONEncoder().encode(original)
     let decoded = try JSONDecoder().decode(KeyboardDevice.self, from: data)
@@ -22,6 +23,7 @@ struct KeyboardDeviceTests {
     #expect(decoded.name == "Corne")
     #expect(decoded.labelStyle == .leftRight)
     #expect(decoded.swapSides == true)
+    #expect(decoded.peripheralLabels == ["L", "R"])
   }
 
   @Test("missing labelStyle defaults to centralPeripheral")
@@ -31,6 +33,7 @@ struct KeyboardDeviceTests {
 
     #expect(decoded.labelStyle == .centralPeripheral)
     #expect(decoded.swapSides == false)
+    #expect(decoded.peripheralLabels == [])
   }
 
   @Test("missing swapSides defaults to false")
@@ -119,5 +122,46 @@ struct KeyboardDeviceTests {
 
     #expect(device.labelStyle == .leftRight)
     #expect(device.swapSides == false)
+  }
+
+  // MARK: - peripheralLabels
+
+  @Test("assignPeripheralLabel grows array and sets value")
+  func assignPeripheralLabel() {
+    var device = KeyboardDevice(uuid: "u", name: "n")
+    device.assignPeripheralLabel("L", at: 0)
+    device.assignPeripheralLabel("R", at: 1)
+    #expect(device.peripheralLabels == ["L", "R"])
+  }
+
+  @Test("assignPeripheralLabel nil clears to empty string")
+  func assignPeripheralLabelNil() {
+    var device = KeyboardDevice(uuid: "u", name: "n", peripheralLabels: ["L", "R"])
+    device.assignPeripheralLabel(nil, at: 0)
+    #expect(device.peripheralLabels == ["", "R"])
+  }
+
+  @Test("hasValidPeripheralLabels with matching count and unique labels")
+  func validPeripheralLabels() {
+    let device = KeyboardDevice(uuid: "u", name: "n", peripheralLabels: ["L", "R"])
+    #expect(device.hasValidPeripheralLabels(count: 2) == true)
+  }
+
+  @Test("hasValidPeripheralLabels false when incomplete")
+  func incompletePeripheralLabels() {
+    let device = KeyboardDevice(uuid: "u", name: "n", peripheralLabels: ["L"])
+    #expect(device.hasValidPeripheralLabels(count: 2) == false)
+  }
+
+  @Test("hasValidPeripheralLabels false when duplicates")
+  func duplicatePeripheralLabels() {
+    let device = KeyboardDevice(uuid: "u", name: "n", peripheralLabels: ["L", "L"])
+    #expect(device.hasValidPeripheralLabels(count: 2) == false)
+  }
+
+  @Test("hasValidPeripheralLabels false when empty strings")
+  func emptyPeripheralLabels() {
+    let device = KeyboardDevice(uuid: "u", name: "n", peripheralLabels: ["L", ""])
+    #expect(device.hasValidPeripheralLabels(count: 2) == false)
   }
 }
