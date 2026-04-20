@@ -73,4 +73,37 @@ struct BatteryStateTests {
     #expect(state.peripherals.isEmpty)
     #expect(state.lastUpdated == nil)
   }
+
+  @Test("isStale is true when lastUpdated is nil")
+  func staleWhenNeverUpdated() {
+    let state = BatteryState()
+    #expect(state.isStale() == true)
+  }
+
+  @Test("isStale is false within threshold window")
+  func freshWithinThreshold() {
+    let state = BatteryState()
+    let now = Date()
+    state.lastUpdated = now.addingTimeInterval(-30)
+
+    #expect(state.isStale(now: now, threshold: 120) == false)
+  }
+
+  @Test("isStale is true past threshold window")
+  func staleBeyondThreshold() {
+    let state = BatteryState()
+    let now = Date()
+    state.lastUpdated = now.addingTimeInterval(-180)
+
+    #expect(state.isStale(now: now, threshold: 120) == true)
+  }
+
+  @Test("isStale uses default threshold")
+  func staleUsesDefaultThreshold() {
+    let state = BatteryState()
+    let now = Date()
+    state.lastUpdated = now.addingTimeInterval(-(BatteryState.defaultStaleThreshold + 1))
+
+    #expect(state.isStale(now: now) == true)
+  }
 }

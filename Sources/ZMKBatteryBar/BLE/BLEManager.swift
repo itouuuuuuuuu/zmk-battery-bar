@@ -243,6 +243,18 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     bluetoothState = central.state
     if central.state == .poweredOn {
       connectSavedKeyboard()
+    } else {
+      // Bluetooth was turned off / reset / unauthorized. CoreBluetooth will
+      // not deliver a per-peripheral disconnect callback in this case, so
+      // wipe state explicitly to surface the disconnected condition (`--`)
+      // instead of leaving the last cached battery levels on screen.
+      stopPollingTimer()
+      if let peripheral = connectedPeripheral {
+        peripheral.delegate = nil
+      }
+      connectedPeripheral = nil
+      resetCharacteristicState()
+      batteryState.reset()
     }
   }
 
