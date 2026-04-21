@@ -1,3 +1,4 @@
+import CoreGraphics
 import Testing
 
 @testable import ZMKBatteryBar
@@ -19,5 +20,20 @@ struct BatteryIconLayoutTests {
   )
   func clampedLevel(level: Int?, expected: Int?) {
     #expect(BatteryIconLayout.clampedLevel(level) == expected)
+  }
+
+  @Test(
+    "snap rounds to the active display scale and guards scale below 1",
+    arguments: [
+      (CGFloat(0.375), CGFloat(1), CGFloat(0)),
+      (CGFloat(0.375), CGFloat(2), CGFloat(0.5)),
+      (CGFloat(0.625), CGFloat(2), CGFloat(0.5)),
+      (CGFloat(0.875), CGFloat(2), CGFloat(1.0)),
+      (CGFloat(0.375), CGFloat(0.5), CGFloat(0)),
+      (CGFloat(1.25), CGFloat(0), CGFloat(1)),
+    ]
+  )
+  func snap(value: CGFloat, scale: CGFloat, expected: CGFloat) {
+    #expect(BatteryIconLayout.snap(value, scale: scale) == expected)
   }
 }

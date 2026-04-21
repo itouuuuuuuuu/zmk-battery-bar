@@ -50,7 +50,7 @@ struct BatteryIconView: View {
   }
 
   private var nubSpacingValue: CGFloat {
-    snap(nubSpacing)
+    max(snap(nubSpacing), 1 / scale)
   }
 
   private var nubWidthValue: CGFloat {
