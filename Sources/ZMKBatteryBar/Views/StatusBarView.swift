@@ -26,6 +26,7 @@ struct StatusBarView: View {
     HStack(spacing: 1) {
       Text(label)
       BatteryIconView(level: level, size: CGSize(width: 18, height: 8))
+        .padding(.trailing, 1)
       percentText(level: level, digits: digits)
     }
     .lineLimit(1)

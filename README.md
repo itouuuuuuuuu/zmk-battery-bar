@@ -73,12 +73,14 @@ CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING=y
 ## Development
 
 ```sh
-# Debug build and run
+# Debug build
 swift build
-swift run ZMKBatteryBar
 
-# Release .app bundle (ad-hoc signing for local use)
+# Build and launch local .app bundle (ad-hoc signing)
 ./scripts/build-app.sh
+open "build/ZMK Battery Bar.app"
+
+# Install to /Applications
 cp -r "build/ZMK Battery Bar.app" /Applications/
 
 # Release .app bundle with Developer ID signing

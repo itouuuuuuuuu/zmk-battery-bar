@@ -1,38 +1,117 @@
+import AppKit
 import SwiftUI
 
+enum BatteryIconLayout {
+  static func clampedLevel(_ level: Int?) -> Int? {
+    guard let level else { return nil }
+    return min(max(level, 0), 100)
+  }
+
+  static func snap(_ value: CGFloat, scale: CGFloat) -> CGFloat {
+    let scale = max(scale, 1)
+    return (value * scale).rounded() / scale
+  }
+}
+
 struct BatteryIconView: View {
+  @Environment(\.displayScale) private var displayScale
+
   let level: Int?
   var size: CGSize = CGSize(width: 20, height: 9)
 
+  private let strokeWidth: CGFloat = 0.75
+  private let nubWidth: CGFloat = 1.5
+  private let nubSpacing: CGFloat = 0.375
+  private let fillCornerRadius: CGFloat = 0.75
+  private let bodyCornerRadius: CGFloat = 2
+
+  private var iconColor: Color {
+    Color(nsColor: .labelColor).opacity(0.8)
+  }
+
+  private var scale: CGFloat {
+    max(displayScale, 1)
+  }
+
+  private func snap(_ value: CGFloat) -> CGFloat {
+    BatteryIconLayout.snap(value, scale: scale)
+  }
+
+  private var iconWidth: CGFloat {
+    snap(size.width)
+  }
+
+  private var iconHeight: CGFloat {
+    snap(size.height)
+  }
+
+  private var lineWidth: CGFloat {
+    max(snap(strokeWidth), 1 / scale)
+  }
+
+  private var nubSpacingValue: CGFloat {
+    snap(nubSpacing)
+  }
+
+  private var nubWidthValue: CGFloat {
+    snap(nubWidth)
+  }
+
+  private var bodyCornerRadiusValue: CGFloat {
+    snap(bodyCornerRadius)
+  }
+
+  private var fillCornerRadiusValue: CGFloat {
+    snap(fillCornerRadius)
+  }
+
+  private var bodyWidth: CGFloat {
+    max(iconWidth - nubWidthValue - nubSpacingValue, 0)
+  }
+
+  private var fillInsetX: CGFloat {
+    snap(lineWidth + 0.5)
+  }
+
+  private var fillInsetY: CGFloat {
+    snap(lineWidth + 0.75)
+  }
+
+  private var fillHeight: CGFloat {
+    max(iconHeight - fillInsetY * 2, 0)
+  }
+
+  private var fillWidth: CGFloat {
+    let clampedLevel = CGFloat(BatteryIconLayout.clampedLevel(level) ?? 0)
+    let availableWidth = max(bodyWidth - fillInsetX * 2, 0)
+    let rawWidth = availableWidth * clampedLevel / 100.0
+    return min(max(snap(rawWidth), 0), availableWidth)
+  }
+
+  private var nubHeight: CGFloat {
+    snap(iconHeight * 0.35)
+  }
+
   var body: some View {
-    Canvas { context, canvasSize in
-      let lineW: CGFloat = 0.75
-      let half = lineW / 2
-      let nubW: CGFloat = 1.5
-      let bodyWidth = canvasSize.width - nubW
-      let bodyHeight = canvasSize.height
-      let color: Color = .primary
+    HStack(alignment: .center, spacing: nubSpacingValue) {
+      ZStack(alignment: .topLeading) {
+        RoundedRectangle(cornerRadius: bodyCornerRadiusValue)
+          .strokeBorder(iconColor, lineWidth: lineWidth)
 
-      let bodyRect = CGRect(x: half, y: half, width: bodyWidth - lineW, height: bodyHeight - lineW)
-      let bodyPath = Path(roundedRect: bodyRect, cornerRadius: 2)
-      context.stroke(bodyPath, with: .color(color.opacity(0.8)), lineWidth: lineW)
-
-      if let level {
-        let inset: CGFloat = lineW + 0.75
-        let fillMaxWidth = bodyWidth - inset * 2
-        let fillWidth = fillMaxWidth * CGFloat(min(max(level, 0), 100)) / 100.0
-        let fillRect = CGRect(x: inset, y: inset, width: fillWidth, height: bodyHeight - inset * 2)
-        let fillPath = Path(roundedRect: fillRect, cornerRadius: 0.75)
-        context.fill(fillPath, with: .color(color.opacity(0.8)))
+        if fillWidth > 0 {
+          RoundedRectangle(cornerRadius: fillCornerRadiusValue)
+            .fill(iconColor)
+            .frame(width: fillWidth, height: fillHeight)
+            .offset(x: fillInsetX, y: fillInsetY)
+        }
       }
+      .frame(width: bodyWidth, height: iconHeight)
 
-      let nubHeight = bodyHeight * 0.35
-      let nubY = (bodyHeight - nubHeight) / 2
-      let nubRect = CGRect(x: bodyWidth, y: nubY, width: nubW, height: nubHeight)
-      let nubPath = Path(roundedRect: nubRect, cornerRadius: 0.5)
-      context.fill(nubPath, with: .color(color.opacity(0.8)))
+      RoundedRectangle(cornerRadius: 0.5)
+        .fill(iconColor)
+        .frame(width: nubWidthValue, height: nubHeight)
     }
-    .frame(width: size.width, height: size.height)
-    .drawingGroup()
+    .frame(width: iconWidth, height: iconHeight)
+    .accessibilityHidden(true)
   }
 }
