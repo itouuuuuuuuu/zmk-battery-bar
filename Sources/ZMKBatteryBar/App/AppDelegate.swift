@@ -66,13 +66,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     lastRenderedRows = rows
 
-    let renderer = ImageRenderer(content: StatusBarView(rows: rows))
-    renderer.scale = NSScreen.main?.backingScaleFactor ?? 2.0
+    let renderScale = button.window?.screen?.backingScaleFactor
+      ?? NSScreen.main?.backingScaleFactor
+      ?? 2.0
+    let content = StatusBarView(rows: rows)
+      .environment(\.displayScale, renderScale)
+    let renderer = ImageRenderer(content: content)
+    renderer.scale = renderScale
 
     guard let cgImage = renderer.cgImage else { return }
-    let scale = Int(renderer.scale)
-    let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width / scale,
-                                                        height: cgImage.height / scale))
+    let imageScale = Int(renderer.scale)
+    let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width / imageScale,
+                                                        height: cgImage.height / imageScale))
     image.isTemplate = true
     button.image = image
   }
