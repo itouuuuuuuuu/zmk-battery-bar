@@ -134,6 +134,10 @@ export APPLE_TEAM_ID="XXXXXXXXXX"
 | `Sources/.../Models/` | BatteryState (@Observable), AppSettings (UserDefaults), KeyboardDevice |
 | `Sources/.../Utilities/` | Launch at login (SMAppService wrapper) |
 
+## Sponsorship
+
+ZMK Battery Bar is free and open source. If it's been useful to you, you can support continued development via the **Sponsor** button at the top of this repository, or directly at <https://github.com/sponsors/itouuuuuuuuu>.
+
 ## License
 
 MIT
