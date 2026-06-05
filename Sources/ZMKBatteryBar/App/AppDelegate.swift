@@ -75,9 +75,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     renderer.scale = renderScale
 
     guard let cgImage = renderer.cgImage else { return }
-    let imageScale = Int(renderer.scale)
-    let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width / imageScale,
-                                                        height: cgImage.height / imageScale))
+    let imageScale = renderer.scale
+    let image = NSImage(cgImage: cgImage,
+                        size: NSSize(width: CGFloat(cgImage.width) / imageScale,
+                                     height: CGFloat(cgImage.height) / imageScale))
     image.isTemplate = true
     button.image = image
   }
