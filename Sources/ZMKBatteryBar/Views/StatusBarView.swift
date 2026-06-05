@@ -19,6 +19,9 @@ struct StatusBarView: View {
     }
     .font(Self.labelFont)
     .frame(height: 22)
+    // Horizontal slack so the ImageRenderer output does not clip glyph
+    // overhang/antialiasing at the edges (notably the trailing "%").
+    .padding(.horizontal, 1)
     .allowsHitTesting(false)
   }
 
