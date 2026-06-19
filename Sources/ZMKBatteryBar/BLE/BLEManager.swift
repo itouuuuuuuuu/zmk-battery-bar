@@ -133,6 +133,17 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     reconnectDelay = 5
   }
 
+  /// UUIDs of battery-service peripherals the system currently has connected.
+  /// Used by the management UI to show per-keyboard connection status without
+  /// filtering the saved list (a sleeping keyboard should stay visible).
+  func connectedKeyboardUUIDs() -> Set<String> {
+    guard centralManager.state == .poweredOn else { return [] }
+    let connected = centralManager.retrieveConnectedPeripherals(
+      withServices: [Self.batteryServiceUUID]
+    )
+    return Set(connected.map { $0.identifier.uuidString })
+  }
+
   // MARK: - Private Methods
 
   /// Detach the current peripheral and clear all derived state. Skips

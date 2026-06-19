@@ -19,7 +19,11 @@ struct MenuContentView: View {
       KeyboardListView(
         bleManager: bleManager,
         appSettings: appSettings,
-        onDismiss: { showKeyboardList = false }
+        onDismiss: { showKeyboardList = false },
+        onSelectionChange: {
+          labelStyleTick &+= 1
+          onLabelChange()
+        }
       )
     } else {
       mainContent
@@ -29,23 +33,7 @@ struct MenuContentView: View {
   @ViewBuilder
   private var mainContent: some View {
     VStack(alignment: .leading, spacing: 8) {
-      if appSettings.savedKeyboards.count > 1 {
-        Picker("Keyboard", selection: Binding(
-          get: { appSettings.selectedKeyboardUUID ?? "" },
-          set: { uuid in
-            appSettings.selectedKeyboardUUID = uuid
-            bleManager.disconnect()
-            bleManager.connectSavedKeyboard()
-            labelStyleTick &+= 1
-            onLabelChange()
-          }
-        )) {
-          ForEach(appSettings.savedKeyboards) { kb in
-            Text(kb.name).tag(kb.uuid)
-          }
-        }
-        .pickerStyle(.menu)
-      } else if let keyboard = appSettings.selectedKeyboard {
+      if let keyboard = appSettings.selectedKeyboard {
         Text(keyboard.name)
           .font(.headline)
       } else {
@@ -86,7 +74,7 @@ struct MenuContentView: View {
           }
         }
 
-      Button("Add Keyboard...") {
+      Button("Keyboards...") {
         showKeyboardList = true
       }
 
