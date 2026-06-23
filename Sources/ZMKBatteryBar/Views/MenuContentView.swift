@@ -8,6 +8,7 @@ struct MenuContentView: View {
   var onLabelChange: () -> Void = {}
 
   @State private var showKeyboardList = false
+  @State private var hideBatteryIcon = false
   @State private var launchAtLogin = LaunchAtLogin.isEnabled
   @State private var now = Date()
   @State private var labelStyleTick = 0
@@ -61,6 +62,12 @@ struct MenuContentView: View {
 
       Divider()
 
+      Toggle("Hide Battery Icon", isOn: $hideBatteryIcon)
+        .onChange(of: hideBatteryIcon) { _, newValue in
+          appSettings.showBatteryIcon = !newValue
+          onLabelChange()
+        }
+
       Toggle("Launch at Login", isOn: $launchAtLogin)
         .onChange(of: launchAtLogin) { _, newValue in
           do {
@@ -92,6 +99,9 @@ struct MenuContentView: View {
     }
     .padding(12)
     .frame(width: 260)
+    .onAppear {
+      hideBatteryIcon = !appSettings.showBatteryIcon
+    }
   }
 
   private func batteryRow(

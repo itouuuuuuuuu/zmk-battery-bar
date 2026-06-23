@@ -10,6 +10,17 @@ final class AppSettings {
   private enum Keys {
     static let selectedKeyboardUUID = "selectedKeyboardUUID"
     static let savedKeyboards = "savedKeyboards"
+    static let showBatteryIcon = "showBatteryIcon"
+  }
+
+  /// Whether the battery icon is drawn in the menu bar. When false, only the
+  /// label (C/P) and percentage are shown. Defaults to true.
+  var showBatteryIcon: Bool {
+    get {
+      guard defaults.object(forKey: Keys.showBatteryIcon) != nil else { return true }
+      return defaults.bool(forKey: Keys.showBatteryIcon)
+    }
+    set { defaults.set(newValue, forKey: Keys.showBatteryIcon) }
   }
 
   var selectedKeyboardUUID: String? {
