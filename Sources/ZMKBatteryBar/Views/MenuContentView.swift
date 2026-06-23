@@ -9,6 +9,7 @@ struct MenuContentView: View {
 
   @State private var showKeyboardList = false
   @State private var hideBatteryIcon = false
+  @State private var singleLineLayout = false
   @State private var swapBatteryIconPositions = false
   @State private var launchAtLogin = LaunchAtLogin.isEnabled
   @State private var now = Date()
@@ -69,6 +70,12 @@ struct MenuContentView: View {
           onLabelChange()
         }
 
+      Toggle("Single Line Layout", isOn: $singleLineLayout)
+        .onChange(of: singleLineLayout) { _, newValue in
+          appSettings.singleLineLayout = newValue
+          onLabelChange()
+        }
+
       Toggle("Swap Battery Positions", isOn: $swapBatteryIconPositions)
         .onChange(of: swapBatteryIconPositions) { _, newValue in
           appSettings.swapBatteryIconPositions = newValue
@@ -108,6 +115,7 @@ struct MenuContentView: View {
     .frame(width: 260)
     .onAppear {
       hideBatteryIcon = !appSettings.showBatteryIcon
+      singleLineLayout = appSettings.singleLineLayout
       swapBatteryIconPositions = appSettings.swapBatteryIconPositions
     }
   }

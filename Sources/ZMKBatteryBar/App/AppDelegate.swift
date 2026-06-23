@@ -69,8 +69,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let renderScale = button.window?.screen?.backingScaleFactor
       ?? NSScreen.main?.backingScaleFactor
       ?? 2.0
-    let content = StatusBarView(rows: rows, showBatteryIcon: appSettings.showBatteryIcon)
-      .environment(\.displayScale, renderScale)
+    let content = StatusBarView(
+      rows: rows,
+      showBatteryIcon: appSettings.showBatteryIcon,
+      singleLine: appSettings.singleLineLayout
+    )
+    .environment(\.displayScale, renderScale)
     let renderer = ImageRenderer(content: content)
     renderer.scale = renderScale
 
