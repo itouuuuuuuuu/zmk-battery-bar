@@ -84,6 +84,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   @MainActor private func currentStatusBarRows() -> [StatusBarRow] {
+    let rows = baseStatusBarRows()
+    // The swap only reorders the rows in the icon; each row keeps its own
+    // label/level pairing, so the label-to-data mapping (including L/R) is
+    // preserved.
+    return appSettings.swapBatteryIconPositions ? rows.reversed() : rows
+  }
+
+  @MainActor private func baseStatusBarRows() -> [StatusBarRow] {
     let stale = batteryState.isStale()
 
     guard let kb = appSettings.selectedKeyboard else {

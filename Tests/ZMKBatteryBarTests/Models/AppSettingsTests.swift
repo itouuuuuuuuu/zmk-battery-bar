@@ -152,4 +152,37 @@ struct AppSettingsTests {
     let settingsRead = AppSettings(defaults: defaults)
     #expect(settingsRead.showBatteryIcon == true)
   }
+
+  @Test("swapBatteryIconPositions defaults to false when unset")
+  func swapBatteryIconPositionsDefaultsFalse() {
+    let settings = makeSettings()
+    #expect(settings.swapBatteryIconPositions == false)
+  }
+
+  @Test("swapBatteryIconPositions persists true and reloads identical")
+  func swapBatteryIconPositionsPersistsTrue() {
+    let suiteName = "ZMKBatteryBarTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let settingsWrite = AppSettings(defaults: defaults)
+    settingsWrite.swapBatteryIconPositions = true
+
+    let settingsRead = AppSettings(defaults: defaults)
+    #expect(settingsRead.swapBatteryIconPositions == true)
+  }
+
+  @Test("swapBatteryIconPositions persists explicit false after being true")
+  func swapBatteryIconPositionsPersistsFalseAfterTrue() {
+    let suiteName = "ZMKBatteryBarTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let settingsWrite = AppSettings(defaults: defaults)
+    settingsWrite.swapBatteryIconPositions = true
+    settingsWrite.swapBatteryIconPositions = false
+
+    let settingsRead = AppSettings(defaults: defaults)
+    #expect(settingsRead.swapBatteryIconPositions == false)
+  }
 }

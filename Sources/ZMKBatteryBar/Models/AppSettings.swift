@@ -11,6 +11,7 @@ final class AppSettings {
     static let selectedKeyboardUUID = "selectedKeyboardUUID"
     static let savedKeyboards = "savedKeyboards"
     static let showBatteryIcon = "showBatteryIcon"
+    static let swapBatteryIconPositions = "swapBatteryIconPositions"
   }
 
   /// Whether the battery icon is drawn in the menu bar. When false, only the
@@ -21,6 +22,14 @@ final class AppSettings {
       return defaults.bool(forKey: Keys.showBatteryIcon)
     }
     set { defaults.set(newValue, forKey: Keys.showBatteryIcon) }
+  }
+
+  /// Whether the Central/Peripheral rows are swapped (reordered) in the menu
+  /// bar icon. Affects the icon only; the popover order and the label-to-data
+  /// mapping (including L/R labels) are unchanged. Defaults to false.
+  var swapBatteryIconPositions: Bool {
+    get { defaults.bool(forKey: Keys.swapBatteryIconPositions) }
+    set { defaults.set(newValue, forKey: Keys.swapBatteryIconPositions) }
   }
 
   var selectedKeyboardUUID: String? {
