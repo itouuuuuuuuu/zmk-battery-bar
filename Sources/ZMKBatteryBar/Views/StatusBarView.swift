@@ -7,6 +7,7 @@ struct StatusBarRow: Equatable {
 
 struct StatusBarView: View {
   let rows: [StatusBarRow]
+  var showBatteryIcon: Bool = true
 
   private static let labelFont = Font.system(size: 11, weight: .semibold, design: .rounded)
 
@@ -28,8 +29,10 @@ struct StatusBarView: View {
   private func row(label: String, level: Int?, digits: Int) -> some View {
     HStack(spacing: 1) {
       Text(label)
-      BatteryIconView(level: level, size: CGSize(width: 18, height: 8))
-        .padding(.trailing, 1)
+      if showBatteryIcon {
+        BatteryIconView(level: level, size: CGSize(width: 18, height: 8))
+          .padding(.trailing, 1)
+      }
       percentText(level: level, digits: digits)
     }
     .lineLimit(1)

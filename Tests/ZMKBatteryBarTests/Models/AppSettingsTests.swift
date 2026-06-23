@@ -119,4 +119,37 @@ struct AppSettingsTests {
     settings.selectedKeyboardUUID = "ghost"
     #expect(settings.selectedKeyboard == nil)
   }
+
+  @Test("showBatteryIcon defaults to true when unset")
+  func showBatteryIconDefaultsTrue() {
+    let settings = makeSettings()
+    #expect(settings.showBatteryIcon == true)
+  }
+
+  @Test("showBatteryIcon persists false and reloads identical")
+  func showBatteryIconPersistsFalse() {
+    let suiteName = "ZMKBatteryBarTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let settingsWrite = AppSettings(defaults: defaults)
+    settingsWrite.showBatteryIcon = false
+
+    let settingsRead = AppSettings(defaults: defaults)
+    #expect(settingsRead.showBatteryIcon == false)
+  }
+
+  @Test("showBatteryIcon persists explicit true after being false")
+  func showBatteryIconPersistsTrueAfterFalse() {
+    let suiteName = "ZMKBatteryBarTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let settingsWrite = AppSettings(defaults: defaults)
+    settingsWrite.showBatteryIcon = false
+    settingsWrite.showBatteryIcon = true
+
+    let settingsRead = AppSettings(defaults: defaults)
+    #expect(settingsRead.showBatteryIcon == true)
+  }
 }
