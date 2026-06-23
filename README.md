@@ -20,6 +20,9 @@ A macOS menu bar app that displays battery levels from ZMK split keyboards via B
 - **Auto Central/Peripheral detection** — Uses BLE descriptor (User Description) to identify each half of the split keyboard
 - **Multiple keyboard support** — Register and switch between multiple ZMK keyboards
 - **Customizable side labels** — Override the default `C` / `P` menu bar labels with `L` / `R` per keyboard to match your physical left/right layout
+- **Single line layout** — Optionally show both battery levels on one line (e.g. `C50% P50%`)
+- **Hide battery icon** — Optionally hide the battery icons and show only the labels and percentages
+- **Swap battery positions** — Optionally swap the order of the two battery rows in the menu bar
 - **Auto-reconnect** — Automatically reconnects with exponential backoff when the keyboard disconnects
 - **Launch at Login** — Optional auto-start via SMAppService
 
