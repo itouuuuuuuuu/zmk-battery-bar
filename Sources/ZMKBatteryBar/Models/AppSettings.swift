@@ -12,6 +12,7 @@ final class AppSettings {
     static let savedKeyboards = "savedKeyboards"
     static let showBatteryIcon = "showBatteryIcon"
     static let swapBatteryIconPositions = "swapBatteryIconPositions"
+    static let singleLineLayout = "singleLineLayout"
   }
 
   /// Whether the battery icon is drawn in the menu bar. When false, only the
@@ -30,6 +31,15 @@ final class AppSettings {
   var swapBatteryIconPositions: Bool {
     get { defaults.bool(forKey: Keys.swapBatteryIconPositions) }
     set { defaults.set(newValue, forKey: Keys.swapBatteryIconPositions) }
+  }
+
+  /// Whether the menu bar icon shows both battery rows on a single line
+  /// (e.g. "C50% P50%") instead of stacked on two lines. The slightly larger
+  /// label font and taller battery icon are applied only in this mode. Battery
+  /// position swapping and icon hiding still apply. Defaults to false.
+  var singleLineLayout: Bool {
+    get { defaults.bool(forKey: Keys.singleLineLayout) }
+    set { defaults.set(newValue, forKey: Keys.singleLineLayout) }
   }
 
   var selectedKeyboardUUID: String? {

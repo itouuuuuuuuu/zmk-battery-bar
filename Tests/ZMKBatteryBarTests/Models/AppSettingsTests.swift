@@ -185,4 +185,37 @@ struct AppSettingsTests {
     let settingsRead = AppSettings(defaults: defaults)
     #expect(settingsRead.swapBatteryIconPositions == false)
   }
+
+  @Test("singleLineLayout defaults to false when unset")
+  func singleLineLayoutDefaultsFalse() {
+    let settings = makeSettings()
+    #expect(settings.singleLineLayout == false)
+  }
+
+  @Test("singleLineLayout persists true and reloads identical")
+  func singleLineLayoutPersistsTrue() {
+    let suiteName = "ZMKBatteryBarTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let settingsWrite = AppSettings(defaults: defaults)
+    settingsWrite.singleLineLayout = true
+
+    let settingsRead = AppSettings(defaults: defaults)
+    #expect(settingsRead.singleLineLayout == true)
+  }
+
+  @Test("singleLineLayout persists explicit false after being true")
+  func singleLineLayoutPersistsFalseAfterTrue() {
+    let suiteName = "ZMKBatteryBarTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let settingsWrite = AppSettings(defaults: defaults)
+    settingsWrite.singleLineLayout = true
+    settingsWrite.singleLineLayout = false
+
+    let settingsRead = AppSettings(defaults: defaults)
+    #expect(settingsRead.singleLineLayout == false)
+  }
 }
