@@ -64,8 +64,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   @MainActor private func renderStatusBar(rows: [StatusBarRow]) {
     guard let button = statusItem.button else { return }
 
-    lastRenderedRows = rows
-
     let renderScale = button.window?.screen?.backingScaleFactor
       ?? NSScreen.main?.backingScaleFactor
       ?? 2.0
@@ -85,6 +83,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                      height: CGFloat(cgImage.height) / imageScale))
     image.isTemplate = true
     button.image = image
+    // Cache only after the image actually reached the button, so a failed
+    // render is retried on the next tick instead of being skipped as
+    // already-rendered.
+    lastRenderedRows = rows
   }
 
   @MainActor private func currentStatusBarRows() -> [StatusBarRow] {
