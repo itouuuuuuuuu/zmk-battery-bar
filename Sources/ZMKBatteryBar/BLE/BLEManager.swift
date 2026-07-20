@@ -88,7 +88,11 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   }
 
   func stopScanning() {
-    centralManager.stopScan()
+    // stopScan while the radio is not powered on triggers CoreBluetooth's
+    // "API MISUSE" warning; the OS has already stopped the scan in that case.
+    if centralManager.state == .poweredOn {
+      centralManager.stopScan()
+    }
     isScanning = false
   }
 
@@ -291,6 +295,9 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
       // not deliver a per-peripheral disconnect callback in this case, so
       // wipe state explicitly to surface the disconnected condition (`--`)
       // instead of leaving the last cached battery levels on screen.
+      // CoreBluetooth also stops any running scan when leaving poweredOn, so
+      // mirror that in the published flag or the UI keeps showing "Scanning...".
+      isScanning = false
       tearDownConnection()
     }
   }

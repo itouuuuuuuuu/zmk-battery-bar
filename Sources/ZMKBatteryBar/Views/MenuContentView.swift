@@ -5,9 +5,9 @@ struct MenuContentView: View {
   @ObservedObject var bleManager: BLEManager
   let appSettings: AppSettings
   let batteryState: BatteryState
+  let navigation: PanelNavigation
   var onLabelChange: () -> Void = {}
 
-  @State private var showKeyboardList = false
   @State private var hideBatteryIcon = false
   @State private var singleLineLayout = false
   @State private var swapBatteryIconPositions = false
@@ -18,11 +18,11 @@ struct MenuContentView: View {
   private let updateTimer = Timer.publish(every: 10, on: .main, in: .common).autoconnect()
 
   var body: some View {
-    if showKeyboardList {
+    if navigation.showKeyboardList {
       KeyboardListView(
         bleManager: bleManager,
         appSettings: appSettings,
-        onDismiss: { showKeyboardList = false },
+        onDismiss: { navigation.showKeyboardList = false },
         onSelectionChange: {
           labelStyleTick &+= 1
           onLabelChange()
@@ -96,7 +96,7 @@ struct MenuContentView: View {
         }
 
       Button("Keyboards...") {
-        showKeyboardList = true
+        navigation.showKeyboardList = true
       }
 
       Divider()
