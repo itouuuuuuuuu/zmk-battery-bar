@@ -27,11 +27,19 @@ struct KeyboardListView: View {
 
       Divider()
 
-      savedSection
+      // Scroll the device sections beyond a fixed cap so a long saved list or
+      // a scan discovering many devices cannot grow the panel off screen.
+      ScrollView {
+        VStack(alignment: .leading, spacing: 8) {
+          savedSection
 
-      Divider()
+          Divider()
 
-      newSection
+          newSection
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .frame(maxHeight: 320)
 
       Divider()
 

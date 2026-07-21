@@ -8,10 +8,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   private let batteryState = BatteryState()
   private let appSettings = AppSettings()
+  private let panelNavigation = PanelNavigation()
   private var bleManager: BLEManager!
 
   private var lastRenderedRows: [StatusBarRow] = []
   private var renderTimer: Timer?
+  private var panelLayoutScheduled = false
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     bleManager = BLEManager(batteryState: batteryState, appSettings: appSettings)
@@ -35,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       bleManager: bleManager,
       appSettings: appSettings,
       batteryState: batteryState,
+      navigation: panelNavigation,
       onLabelChange: { [weak self] in
         MainActor.assumeIsolated {
           self?.updateButtonImage()
@@ -42,6 +45,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       }
     )
     panel = StatusBarPanel(content: menuContent)
+    panel.onClose = { [weak self] in
+      guard let self else { return }
+      // The panel can be dismissed without going through the in-view Back
+      // button (status-item toggle, click outside). Reset navigation and stop
+      // any in-progress scan here so neither survives invisibly.
+      self.panelNavigation.showKeyboardList = false
+      self.bleManager.stopScanning()
+    }
+    panel.onContentSizeChange = { [weak self] in
+      self?.schedulePanelLayout()
+    }
   }
 
   func applicationWillTerminate(_ notification: Notification) {
@@ -64,8 +78,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   @MainActor private func renderStatusBar(rows: [StatusBarRow]) {
     guard let button = statusItem.button else { return }
 
-    lastRenderedRows = rows
-
     let renderScale = button.window?.screen?.backingScaleFactor
       ?? NSScreen.main?.backingScaleFactor
       ?? 2.0
@@ -85,6 +97,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                      height: CGFloat(cgImage.height) / imageScale))
     image.isTemplate = true
     button.image = image
+    // Cache only after the image actually reached the button, so a failed
+    // render is retried on the next tick instead of being skipped as
+    // already-rendered.
+    lastRenderedRows = rows
   }
 
   @MainActor private func currentStatusBarRows() -> [StatusBarRow] {
@@ -124,30 +140,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   // MARK: - Panel
 
   @objc private func togglePanel(_ sender: Any?) {
-    guard let button = statusItem.button,
-          let buttonWindow = button.window else { return }
-
     if panel.isVisible {
       panel.close()
       return
     }
-
-    let buttonRect = buttonWindow.frame
-    guard let contentView = panel.contentView else { return }
-    let panelSize = contentView.fittingSize
-
-    let x = buttonRect.midX - panelSize.width / 2
-    let y = buttonRect.minY - panelSize.height - 4
-
-    panel.setContentSize(panelSize)
-    panel.setFrameOrigin(NSPoint(x: x, y: y))
+    layoutPanel()
     panel.makeKeyAndOrderFront(nil)
+  }
+
+  /// Sizes the panel to the hosted content's ideal size (clamped to the space
+  /// below the status item) and anchors it under the status item. Called at
+  /// open time and again whenever the content's ideal size changes while the
+  /// panel is open, so navigation to the (taller) keyboard list or a growing
+  /// device list never clips.
+  @MainActor private func layoutPanel() {
+    guard let button = statusItem.button,
+          let buttonWindow = button.window,
+          let contentView = panel.contentView else { return }
+
+    var size = contentView.fittingSize
+    let buttonRect = buttonWindow.frame
+    let visible = (buttonWindow.screen ?? NSScreen.main)?.visibleFrame
+    if let visible {
+      size.height = min(size.height, buttonRect.minY - visible.minY - 8)
+    }
+
+    var origin = NSPoint(
+      x: buttonRect.midX - size.width / 2,
+      y: buttonRect.minY - size.height - 4
+    )
+    if let visible {
+      origin.x = min(max(origin.x, visible.minX + 4), visible.maxX - size.width - 4)
+    }
+
+    // Skip the no-op frame set so an intrinsic-size invalidation caused by
+    // our own resize cannot ping-pong into an endless layout loop.
+    let target = NSRect(origin: origin, size: size)
+    guard abs(panel.frame.minX - target.minX) > 0.5
+      || abs(panel.frame.minY - target.minY) > 0.5
+      || abs(panel.frame.width - target.width) > 0.5
+      || abs(panel.frame.height - target.height) > 0.5
+    else { return }
+
+    panel.setContentSize(size)
+    panel.setFrameOrigin(origin)
+  }
+
+  /// Coalesces content-size-change callbacks (which can fire mid-layout) into
+  /// a single relayout on the next run loop turn.
+  private func schedulePanelLayout() {
+    guard panel.isVisible, !panelLayoutScheduled else { return }
+    panelLayoutScheduled = true
+    DispatchQueue.main.async { [weak self] in
+      // Dispatched to the main queue, so this is always on the main actor.
+      MainActor.assumeIsolated {
+        guard let self else { return }
+        self.panelLayoutScheduled = false
+        if self.panel.isVisible {
+          self.layoutPanel()
+        }
+      }
+    }
   }
 }
 
 // MARK: - StatusBarPanel
 
 final class StatusBarPanel: NSPanel {
+  /// Called whenever the panel actually closes, regardless of the close path
+  /// (status-item toggle, outside click, programmatic close).
+  var onClose: (@MainActor () -> Void)?
+  /// Called when the hosted SwiftUI content's ideal size changes, so the
+  /// owner can resize the panel while it is open.
+  var onContentSizeChange: (@MainActor () -> Void)?
+
   // NSEvent monitor handle. Marked nonisolated(unsafe) so `deinit` (which is
   // nonisolated) can clean it up. NSEvent.addGlobalMonitorForEvents /
   // removeMonitor are documented as thread-safe, and all non-deinit accesses
@@ -180,7 +246,7 @@ final class StatusBarPanel: NSPanel {
     visualEffect.autoresizingMask = [.width, .height]
     containerView.addSubview(visualEffect)
 
-    let hostingView = NSHostingView(rootView: content)
+    let hostingView = AutoSizingHostingView(rootView: content)
     hostingView.translatesAutoresizingMaskIntoConstraints = false
     visualEffect.addSubview(hostingView)
     NSLayoutConstraint.activate([
@@ -191,6 +257,10 @@ final class StatusBarPanel: NSPanel {
     ])
 
     contentView = containerView
+
+    hostingView.onIntrinsicSizeChange = { [weak self] in
+      self?.onContentSizeChange?()
+    }
   }
 
   override var canBecomeKey: Bool { true }
@@ -206,6 +276,7 @@ final class StatusBarPanel: NSPanel {
   override func close() {
     super.close()
     removeMonitor()
+    onClose?()
   }
 
   deinit {
@@ -217,5 +288,20 @@ final class StatusBarPanel: NSPanel {
       NSEvent.removeMonitor(monitor)
     }
     monitor = nil
+  }
+}
+
+// MARK: - AutoSizingHostingView
+
+/// NSHostingView that reports SwiftUI ideal-size changes to its owner. AppKit
+/// has no public notification for this, and the panel needs it to resize
+/// itself while open (the hosting view is pinned to the panel's bounds, so
+/// its frame alone never reflects the content's ideal size).
+private final class AutoSizingHostingView<Content: View>: NSHostingView<Content> {
+  var onIntrinsicSizeChange: (@MainActor () -> Void)?
+
+  override func invalidateIntrinsicContentSize() {
+    super.invalidateIntrinsicContentSize()
+    onIntrinsicSizeChange?()
   }
 }

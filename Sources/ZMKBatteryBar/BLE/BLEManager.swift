@@ -51,6 +51,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   private var latestBatteryLevels: [CBCharacteristic: Int] = [:]
   private var pollingTimer: Timer?
   private var reconnectDelay: TimeInterval = 5
+  private var reconnectWorkItem: DispatchWorkItem?
   private static let maxReconnectDelay: TimeInterval = 300
 
   // MARK: - Init
@@ -87,7 +88,11 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   }
 
   func stopScanning() {
-    centralManager.stopScan()
+    // stopScan while the radio is not powered on triggers CoreBluetooth's
+    // "API MISUSE" warning; the OS has already stopped the scan in that case.
+    if centralManager.state == .poweredOn {
+      centralManager.stopScan()
+    }
     isScanning = false
   }
 
@@ -101,6 +106,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
       existing.delegate = nil
       centralManager.cancelPeripheralConnection(existing)
     }
+    cancelScheduledReconnect()
     stopPollingTimer()
     resetCharacteristicState()
     batteryState.reset()
@@ -123,6 +129,9 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     let peripherals = centralManager.retrievePeripherals(withIdentifiers: [uuid])
     guard let peripheral = peripherals.first else { return }
 
+    // Cancel only after the guards: if the saved peripheral cannot be
+    // retrieved right now, a pending backoff retry should stay alive.
+    cancelScheduledReconnect()
     connectedPeripheral = peripheral
     peripheral.delegate = self
     centralManager.connect(peripheral, options: nil)
@@ -151,6 +160,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   /// don't trigger CoreBluetooth's "API MISUSE" warning during a
   /// Bluetooth-off teardown — the radio has already torn the link down.
   private func tearDownConnection() {
+    cancelScheduledReconnect()
     stopPollingTimer()
     if let peripheral = connectedPeripheral {
       peripheral.delegate = nil
@@ -246,16 +256,32 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     }
   }
 
+  /// Drop any pending reconnect so a stale backoff block cannot fire a
+  /// duplicate `connect` after the user (or another code path) has already
+  /// started a new connection or torn the current one down.
+  private func cancelScheduledReconnect() {
+    reconnectWorkItem?.cancel()
+    reconnectWorkItem = nil
+  }
+
   private func scheduleReconnect() {
+    cancelScheduledReconnect()
     let delay = reconnectDelay
     reconnectDelay = ReconnectBackoff.nextDelay(
       current: reconnectDelay,
       cap: Self.maxReconnectDelay
     )
 
-    DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-      self?.connectSavedKeyboard()
+    let workItem = DispatchWorkItem { [weak self] in
+      // Scheduled on the main queue, so this is always on the main actor.
+      MainActor.assumeIsolated {
+        guard let self else { return }
+        self.reconnectWorkItem = nil
+        self.connectSavedKeyboard()
+      }
     }
+    reconnectWorkItem = workItem
+    DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
   }
 
   // MARK: - CBCentralManagerDelegate
@@ -269,6 +295,9 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
       // not deliver a per-peripheral disconnect callback in this case, so
       // wipe state explicitly to surface the disconnected condition (`--`)
       // instead of leaving the last cached battery levels on screen.
+      // CoreBluetooth also stops any running scan when leaving poweredOn, so
+      // mirror that in the published flag or the UI keeps showing "Scanning...".
+      isScanning = false
       tearDownConnection()
     }
   }
@@ -292,6 +321,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
 
   func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
     guard peripheral.identifier == connectedPeripheral?.identifier else { return }
+    cancelScheduledReconnect()
     reconnectDelay = 5
     resetCharacteristicState()
     peripheral.discoverServices([Self.batteryServiceUUID])
