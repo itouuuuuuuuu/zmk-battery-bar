@@ -122,15 +122,22 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   }
 
   func connectSavedKeyboard() {
+    guard centralManager.state == .poweredOn else { return }
     guard let uuidString = appSettings.selectedKeyboardUUID,
           let uuid = UUID(uuidString: uuidString)
     else { return }
 
     let peripherals = centralManager.retrievePeripherals(withIdentifiers: [uuid])
-    guard let peripheral = peripherals.first else { return }
+    guard let peripheral = peripherals.first else {
+      // CoreBluetooth can temporarily lose its cached peripheral after radio
+      // or system state changes. Keep the backoff chain alive instead of
+      // leaving the saved keyboard permanently disconnected.
+      scheduleReconnect()
+      return
+    }
 
-    // Cancel only after the guards: if the saved peripheral cannot be
-    // retrieved right now, a pending backoff retry should stay alive.
+    // Retrieval failures are rescheduled above. Once the peripheral is
+    // available, cancel any older retry before starting the connection.
     cancelScheduledReconnect()
     connectedPeripheral = peripheral
     peripheral.delegate = self
@@ -284,6 +291,27 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
   }
 
+  /// A connected peripheral does not necessarily disconnect when GATT
+  /// discovery fails. Tear down the unusable connection explicitly so the
+  /// normal disconnect callback can schedule a clean reconnect attempt.
+  private func recoverFromDiscoveryFailure(
+    peripheral: CBPeripheral,
+    message: String
+  ) {
+    guard peripheral.identifier == connectedPeripheral?.identifier else { return }
+
+    print("[BLEManager] \(message)")
+    stopPollingTimer()
+    resetCharacteristicState()
+    batteryState.reset()
+
+    if centralManager.state == .poweredOn {
+      centralManager.cancelPeripheralConnection(peripheral)
+    } else {
+      tearDownConnection()
+    }
+  }
+
   // MARK: - CBCentralManagerDelegate
 
   func centralManagerDidUpdateState(_ central: CBCentralManager) {
@@ -322,7 +350,6 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
     guard peripheral.identifier == connectedPeripheral?.identifier else { return }
     cancelScheduledReconnect()
-    reconnectDelay = 5
     resetCharacteristicState()
     peripheral.discoverServices([Self.batteryServiceUUID])
     startPollingTimer()
@@ -359,10 +386,19 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
 
   func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
     if let error {
-      print("[BLEManager] Service discovery error: \(error.localizedDescription)")
+      recoverFromDiscoveryFailure(
+        peripheral: peripheral,
+        message: "Service discovery error: \(error.localizedDescription)"
+      )
       return
     }
-    guard let services = peripheral.services else { return }
+    guard let services = peripheral.services, !services.isEmpty else {
+      recoverFromDiscoveryFailure(
+        peripheral: peripheral,
+        message: "Service discovery returned no battery services"
+      )
+      return
+    }
     for service in services {
       peripheral.discoverCharacteristics([Self.batteryLevelCharacteristicUUID], for: service)
     }
@@ -374,10 +410,23 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     error: Error?
   ) {
     if let error {
-      print("[BLEManager] Characteristic discovery error: \(error.localizedDescription)")
+      recoverFromDiscoveryFailure(
+        peripheral: peripheral,
+        message: "Characteristic discovery error: \(error.localizedDescription)"
+      )
       return
     }
-    guard let characteristics = service.characteristics else { return }
+    guard let characteristics = service.characteristics, !characteristics.isEmpty else {
+      recoverFromDiscoveryFailure(
+        peripheral: peripheral,
+        message: "Characteristic discovery returned no battery characteristics"
+      )
+      return
+    }
+    // The connection is usable only after the expected GATT characteristic
+    // is present. Resetting here preserves exponential backoff when transport
+    // connection succeeds repeatedly but service discovery keeps failing.
+    reconnectDelay = 5
     for characteristic in characteristics {
       batteryCharacteristics.append(characteristic)
       peripheral.setNotifyValue(true, for: characteristic)
