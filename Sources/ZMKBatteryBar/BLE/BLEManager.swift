@@ -50,9 +50,20 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   private var terminallyFailedCharacteristics: Set<CBCharacteristic> = []
   private var latestBatteryLevels: [CBCharacteristic: Int] = [:]
   private var pollingTimer: Timer?
-  private var reconnectDelay: TimeInterval = 5
+  private var reconnectDelay: TimeInterval = BLEManager.initialReconnectDelay
   private var reconnectWorkItem: DispatchWorkItem?
+  private static let initialReconnectDelay: TimeInterval = 5
   private static let maxReconnectDelay: TimeInterval = 300
+  // Services of the current connection still awaiting their
+  // characteristic-discovery callback. The connection's discovery outcome is
+  // judged only after every service has reported back, so one bad Battery
+  // Service instance cannot tear down a connection whose sibling service
+  // produced usable characteristics.
+  private var pendingCharacteristicDiscoveries = 0
+  // Consecutive connections torn down by recoverFromDiscoveryFailure. Drives
+  // exponential backoff for repeated discovery failures independently of
+  // reconnectDelay, which resets on every successful transport connect.
+  private var discoveryFailureStreak = 0
 
   // MARK: - Init
 
@@ -110,6 +121,10 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     stopPollingTimer()
     resetCharacteristicState()
     batteryState.reset()
+    // A user-picked keyboard must not inherit backoff inflated by the
+    // previous keyboard's failures.
+    reconnectDelay = Self.initialReconnectDelay
+    discoveryFailureStreak = 0
 
     connectedPeripheral = peripheral
     peripheral.delegate = self
@@ -122,15 +137,22 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   }
 
   func connectSavedKeyboard() {
+    guard centralManager.state == .poweredOn else { return }
     guard let uuidString = appSettings.selectedKeyboardUUID,
           let uuid = UUID(uuidString: uuidString)
     else { return }
 
     let peripherals = centralManager.retrievePeripherals(withIdentifiers: [uuid])
-    guard let peripheral = peripherals.first else { return }
+    guard let peripheral = peripherals.first else {
+      // CoreBluetooth can temporarily lose its cached peripheral after radio
+      // or system state changes. Keep the backoff chain alive instead of
+      // leaving the saved keyboard permanently disconnected.
+      scheduleReconnect()
+      return
+    }
 
-    // Cancel only after the guards: if the saved peripheral cannot be
-    // retrieved right now, a pending backoff retry should stay alive.
+    // Retrieval failures are rescheduled above. Once the peripheral is
+    // available, cancel any older retry before starting the connection.
     cancelScheduledReconnect()
     connectedPeripheral = peripheral
     peripheral.delegate = self
@@ -139,7 +161,8 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
 
   func disconnect() {
     tearDownConnection()
-    reconnectDelay = 5
+    reconnectDelay = Self.initialReconnectDelay
+    discoveryFailureStreak = 0
   }
 
   /// UUIDs of battery-service peripherals the system currently has connected.
@@ -178,6 +201,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     characteristicRoles = [:]
     terminallyFailedCharacteristics = []
     latestBatteryLevels = [:]
+    pendingCharacteristicDiscoveries = 0
   }
 
   private func startPollingTimer() {
@@ -284,6 +308,35 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
   }
 
+  /// A connected peripheral does not necessarily disconnect when GATT
+  /// discovery fails. Tear down the unusable connection explicitly. While
+  /// powered on, the disconnect callback clears session state and schedules
+  /// the retry; otherwise `tearDownConnection` clears state now and the retry
+  /// waits for `centralManagerDidUpdateState(.poweredOn)` re-entry.
+  private func recoverFromDiscoveryFailure(
+    peripheral: CBPeripheral,
+    message: String
+  ) {
+    print("[BLEManager] \(message)")
+    guard peripheral.identifier == connectedPeripheral?.identifier else { return }
+
+    // Every successful transport connect resets reconnectDelay, so derive the
+    // retry delay from the discovery-failure streak instead — a persistently
+    // unusable device still backs off exponentially.
+    discoveryFailureStreak += 1
+    reconnectDelay = ReconnectBackoff.delay(
+      forConsecutiveFailures: discoveryFailureStreak,
+      initial: Self.initialReconnectDelay,
+      cap: Self.maxReconnectDelay
+    )
+
+    if centralManager.state == .poweredOn {
+      centralManager.cancelPeripheralConnection(peripheral)
+    } else {
+      tearDownConnection()
+    }
+  }
+
   // MARK: - CBCentralManagerDelegate
 
   func centralManagerDidUpdateState(_ central: CBCentralManager) {
@@ -322,7 +375,10 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
     guard peripheral.identifier == connectedPeripheral?.identifier else { return }
     cancelScheduledReconnect()
-    reconnectDelay = 5
+    // The device is reachable again, so retry quickly if the link drops
+    // before discovery completes (e.g. a keyboard that re-enters deep sleep).
+    // Repeated discovery failures still back off via discoveryFailureStreak.
+    reconnectDelay = Self.initialReconnectDelay
     resetCharacteristicState()
     peripheral.discoverServices([Self.batteryServiceUUID])
     startPollingTimer()
@@ -359,10 +415,21 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
 
   func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
     if let error {
-      print("[BLEManager] Service discovery error: \(error.localizedDescription)")
+      recoverFromDiscoveryFailure(
+        peripheral: peripheral,
+        message: "Service discovery error: \(error.localizedDescription)"
+      )
       return
     }
-    guard let services = peripheral.services else { return }
+    guard let services = peripheral.services, !services.isEmpty else {
+      recoverFromDiscoveryFailure(
+        peripheral: peripheral,
+        message: "Service discovery returned no battery services"
+      )
+      return
+    }
+    guard peripheral.identifier == connectedPeripheral?.identifier else { return }
+    pendingCharacteristicDiscoveries = services.count
     for service in services {
       peripheral.discoverCharacteristics([Self.batteryLevelCharacteristicUUID], for: service)
     }
@@ -375,18 +442,36 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   ) {
     if let error {
       print("[BLEManager] Characteristic discovery error: \(error.localizedDescription)")
-      return
     }
-    guard let characteristics = service.characteristics else { return }
-    for characteristic in characteristics {
-      batteryCharacteristics.append(characteristic)
-      peripheral.setNotifyValue(true, for: characteristic)
-      peripheral.discoverDescriptors(for: characteristic)
-      // The initial readValue is deferred until the characteristic's role is
-      // known (see didDiscoverDescriptorsFor / didUpdateValueFor descriptor).
-      // Reading here would race descriptor discovery, and since GATT does not
-      // guarantee characteristic ordering, the array-index fallback can map
-      // central/peripheral to the wrong slots until the next polled update.
+    guard peripheral.identifier == connectedPeripheral?.identifier,
+          pendingCharacteristicDiscoveries > 0
+    else { return }
+    pendingCharacteristicDiscoveries -= 1
+
+    if error == nil, let characteristics = service.characteristics {
+      for characteristic in characteristics {
+        batteryCharacteristics.append(characteristic)
+        peripheral.setNotifyValue(true, for: characteristic)
+        peripheral.discoverDescriptors(for: characteristic)
+        // The initial readValue is deferred until the characteristic's role is
+        // known (see didDiscoverDescriptorsFor / didUpdateValueFor descriptor).
+        // Reading here would race descriptor discovery, and since GATT does not
+        // guarantee characteristic ordering, the array-index fallback can map
+        // central/peripheral to the wrong slots until the next polled update.
+      }
+    }
+
+    // Judge the discovery outcome per connection, not per service: only when
+    // every service has reported back and none produced a battery
+    // characteristic is the connection unusable.
+    guard pendingCharacteristicDiscoveries == 0 else { return }
+    if batteryCharacteristics.isEmpty {
+      recoverFromDiscoveryFailure(
+        peripheral: peripheral,
+        message: "Characteristic discovery returned no battery characteristics"
+      )
+    } else {
+      discoveryFailureStreak = 0
     }
   }
 
