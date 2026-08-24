@@ -4,3 +4,8 @@ build/
 *.xcodeproj/
 DerivedData/
 .DS_Store
+
+# Global gitignore excludes .claude/; keep the shared agent rules tracked.
+!.claude/
+.claude/*
+!.claude/rules/
