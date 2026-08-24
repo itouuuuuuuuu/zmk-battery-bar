@@ -28,16 +28,17 @@ self-healing). Construct the trace before accepting or rejecting one.
 
 ## Release
 
-1. Merge happens on the maintainer's side. When told the PR is merged, update
-   main and delete the merged branch.
+1. Merging is a human decision. Once the PR is merged, update main and delete
+   the merged branch.
 2. Choose the version: fixes only → patch.
 3. `release/vX.Y.Z` branch → bump both `CFBundleVersion` and
    `CFBundleShortVersionString` in `Resources/Info.plist` → commit
-   `Bump version to X.Y.Z` → PR → wait for the maintainer to merge.
+   `Bump version to X.Y.Z` → PR → wait for it to be merged.
 4. After that merge, push tag `vX.Y.Z`. Then verify and report:
    - the release workflow run concluded `success`,
    - the GitHub Release exists with the signed/notarized
      `ZMKBatteryBar-X.Y.Z.zip` asset,
-   - `Casks/zmk-battery-bar.rb` in `itouuuuuuuuu/homebrew-tap` shows the new
-     version.
+   - the Homebrew cask the workflow updates shows the new version (upstream:
+     `Casks/zmk-battery-bar.rb` in `itouuuuuuuuu/homebrew-tap`; a fork needs its
+     own tap and signing/notarization credentials).
 5. Finally update main locally and delete the release branch.

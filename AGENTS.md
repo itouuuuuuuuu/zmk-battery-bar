@@ -123,7 +123,7 @@ been the subject of a real bug:
 - Never commit directly to `main`; create a feature branch and open a PR.
 - Commit messages use conventional prefixes (`feat:`, `fix:`, `docs:`, `chore:`).
 - Run `swift test` before pushing. The full suite is fast (~90 tests).
-- The maintainer merges PRs. Do not merge unless explicitly asked.
+- Do not merge a PR unless explicitly asked to.
 - After a merge: `git checkout main && git pull`, and delete the merged branch.
 - Cross-check non-trivial review findings with a second agent before acting on
   them — see `.claude/rules/review-and-release.md`.
