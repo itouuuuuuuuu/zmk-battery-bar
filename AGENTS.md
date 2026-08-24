@@ -107,7 +107,7 @@ been the subject of a real bug:
   `ReconnectBackoff.delay(forConsecutiveFailures:initial:cap:)`, kept separate
   from the transport-level delay.
 - **Judge discovery outcomes per connection, not per service.** A peripheral can
-  expose more than one Battery Service instance (RMK does this). Wait for all
+  expose more than one Battery Service instance. Wait for all
   characteristic-discovery callbacks (`pendingCharacteristicDiscoveries`) and
   tear the connection down only when *no* characteristic was found at all.
 - **Session reset state lives in one place.** The
@@ -148,8 +148,8 @@ the bundle only.
 
 Read the relevant file before doing that kind of work:
 
-- `.claude/rules/ble-domain-knowledge.md` — ZMK/RMK firmware and BLE facts the
+- `.claude/rules/ble-domain-knowledge.md` — ZMK firmware and BLE facts the
   implementation depends on (push vs. poll semantics, split proxying, GATT
-  caching, multiple Battery Service instances).
+  caching, causes of a legitimate 0% reading).
 - `.claude/rules/review-and-release.md` — the review / cross-check / fix /
   release loop this project uses.

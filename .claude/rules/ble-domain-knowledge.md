@@ -1,4 +1,4 @@
-# ZMK / RMK BLE domain knowledge
+# ZMK BLE domain knowledge
 
 Firmware- and protocol-level facts this app's implementation depends on.
 Verified in past investigations; correct them if new evidence appears.
@@ -48,18 +48,3 @@ them in `BLEManager`.
   built for the v1 target reports 0% permanently.
 - A keyboard keeps running well below a reported 0%, so 0% is not necessarily a
   wrong reading.
-
-## RMK support (PR rmk-rs/rmk#1038)
-
-- The PR makes the central expose **multiple 0x180F service instances**
-  (central + one per `[[split.peripheral]]` that sets `battery_adc_pin`), each
-  with a read+notify Battery Level and a 0x2901 description defaulting to
-  `Central` / `Peripheral 0` / `Peripheral 1`…
-- **This app already handles it**: `didDiscoverServices` iterates every returned
-  service, `DescriptorRoleParser` matches on `central`/`peripheral` substrings,
-  and `BatteryStateComposer` holds peripherals as an array. This is also why the
-  discovery-outcome judgement must be per connection, not per service (see
-  AGENTS.md → BLE state-machine invariants).
-- Role detection degrades to discovery-order inference (`RoleAssigner`) when
-  firmware renames `battery_user_description` to e.g. `"Left"`/`"Right"`. GATT
-  ordering is not guaranteed, so that fallback is best-effort by design.
