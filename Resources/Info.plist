@@ -2,23 +2,23 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleExecutable</key>
-	<string>ZMKBatteryBar</string>
-	<key>CFBundleIconFile</key>
-	<string>AppIcon</string>
-	<key>CFBundleIdentifier</key>
-	<string>com.zmk-battery-bar.app</string>
-	<key>CFBundleName</key>
-	<string>ZMK Battery Bar</string>
-	<key>CFBundlePackageType</key>
-	<string>APPL</string>
-	<key>CFBundleShortVersionString</key>
-	<string>1.6.0</string>
-	<key>CFBundleVersion</key>
-	<string>1.6.0</string>
-	<key>LSUIElement</key>
-	<true/>
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Bluetooth is required to read battery levels from your keyboard.</string>
+  <key>LSUIElement</key>
+  <true/>
+  <key>NSBluetoothAlwaysUsageDescription</key>
+  <string>Bluetooth is required to read battery levels from your keyboard.</string>
+  <key>CFBundleName</key>
+  <string>ZMK Battery Bar</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.zmk-battery-bar.app</string>
+  <key>CFBundleVersion</key>
+  <string>1.6.0</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.6.0</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
+  <key>CFBundleExecutable</key>
+  <string>ZMKBatteryBar</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
 </dict>
 </plist>
