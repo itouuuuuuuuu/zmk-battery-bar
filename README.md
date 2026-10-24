@@ -41,7 +41,7 @@ brew install --cask itouuuuuuuuu/tap/zmk-battery-bar
 
 1. Launch ZMK Battery Bar — it appears in the menu bar with `C` and `P` battery levels
 2. Click the status bar item to open the popover
-3. If no keyboard is connected, click **Add Keyboard...** to scan for BLE devices
+3. If no keyboard is connected, click **Add Keyboard...**, then **Start Scan** to scan for BLE devices
 4. Select your ZMK keyboard from the discovered devices list
 5. Battery levels update automatically via BLE notifications
 
