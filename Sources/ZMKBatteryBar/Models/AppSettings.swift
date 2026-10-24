@@ -13,6 +13,7 @@ final class AppSettings {
     static let showBatteryIcon = "showBatteryIcon"
     static let swapBatteryIconPositions = "swapBatteryIconPositions"
     static let singleLineLayout = "singleLineLayout"
+    static let autoSwitchKeyboard = "autoSwitchKeyboard"
   }
 
   /// Whether the battery icon is drawn in the menu bar. When false, only the
@@ -40,6 +41,14 @@ final class AppSettings {
   var singleLineLayout: Bool {
     get { defaults.bool(forKey: Keys.singleLineLayout) }
     set { defaults.set(newValue, forKey: Keys.singleLineLayout) }
+  }
+
+  /// Whether the app switches the displayed keyboard to whichever saved
+  /// keyboard the user is typing on (requires Input Monitoring permission).
+  /// Defaults to false.
+  var autoSwitchKeyboard: Bool {
+    get { defaults.bool(forKey: Keys.autoSwitchKeyboard) }
+    set { defaults.set(newValue, forKey: Keys.autoSwitchKeyboard) }
   }
 
   var selectedKeyboardUUID: String? {
