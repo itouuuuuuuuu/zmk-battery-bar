@@ -87,6 +87,9 @@ struct MenuContentView: View {
 
       Toggle("Auto-Switch to Active Keyboard", isOn: $autoSwitchKeyboard)
         .onChange(of: autoSwitchKeyboard) { _, newValue in
+          // onAppear syncs this state from settings, which also fires
+          // onChange; only a real user toggle differs from the stored value.
+          guard newValue != appSettings.autoSwitchKeyboard else { return }
           appSettings.autoSwitchKeyboard = newValue
           if newValue, !ActiveKeyboardMonitor.hasAccess {
             // First call shows the system prompt; later calls are silent, so

@@ -1,5 +1,6 @@
 import Foundation
 import IOKit.hid
+import os
 
 /// Watches key presses system-wide and reports the HID product name of the
 /// keyboard they came from. Only the *source device* of each press is used;
@@ -11,14 +12,14 @@ import IOKit.hid
 @MainActor
 final class ActiveKeyboardMonitor {
   /// Called on the main actor with the product name of the keyboard that
-  /// just produced a key press. Throttled to at most once per
-  /// `minimumInterval` so a burst of typing does not re-run the resolver on
-  /// every keystroke.
+  /// just produced a key press. Bursts from one keyboard are collapsed by
+  /// `KeyboardInputThrottle`; the first press from a different keyboard is
+  /// always delivered immediately.
   var onKeyboardInput: ((String) -> Void)?
 
   private var manager: IOHIDManager?
-  private var lastReported = Date.distantPast
-  private let minimumInterval: TimeInterval = 0.5
+  private var throttle = KeyboardInputThrottle()
+  private static let logger = Logger(subsystem: "com.zmk-battery-bar.app", category: "ActiveKeyboardMonitor")
 
   private static let keyboardUsagePage = Int(kHIDPage_KeyboardOrKeypad)
 
@@ -61,14 +62,17 @@ final class ActiveKeyboardMonitor {
     let result = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
     guard result == kIOReturnSuccess else {
       IOHIDManagerUnscheduleFromRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
+      Self.logger.error("IOHIDManagerOpen failed: \(result, privacy: .public)")
       return false
     }
     self.manager = manager
+    Self.logger.info("HID monitoring started")
     return true
   }
 
   func stop() {
     guard let manager else { return }
+    Self.logger.info("HID monitoring stopped")
     IOHIDManagerRegisterInputValueCallback(manager, nil, nil)
     IOHIDManagerUnscheduleFromRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
     IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
@@ -100,9 +104,8 @@ final class ActiveKeyboardMonitor {
   }
 
   private func handleInput(productName: String) {
-    let now = Date()
-    guard now.timeIntervalSince(lastReported) >= minimumInterval else { return }
-    lastReported = now
+    guard throttle.shouldReport(productName: productName) else { return }
+    Self.logger.debug("key press from \(productName, privacy: .public)")
     onKeyboardInput?(productName)
   }
 }

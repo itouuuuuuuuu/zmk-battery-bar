@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import os
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -11,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private let panelNavigation = PanelNavigation()
   private var bleManager: BLEManager!
   private let activeKeyboardMonitor = ActiveKeyboardMonitor()
+  private static let logger = Logger(subsystem: "com.zmk-battery-bar.app", category: "AppDelegate")
 
   private var lastRenderedRows: [StatusBarRow] = []
   private var renderTimer: Timer?
@@ -76,9 +78,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// setting stays on and the monitor starts on the next launch once the
   /// user has allowed it.
   private func syncActiveKeyboardMonitor() {
+    if appSettings.autoSwitchKeyboard, !ActiveKeyboardMonitor.hasAccess {
+      // The user opted in, so asking is expected. macOS shows the prompt only
+      // the first time; later calls are silent, so this is safe on every
+      // launch and also re-prompts after the TCC record has been reset.
+      ActiveKeyboardMonitor.requestAccess()
+    }
     if appSettings.autoSwitchKeyboard, ActiveKeyboardMonitor.hasAccess {
       activeKeyboardMonitor.start()
     } else {
+      if appSettings.autoSwitchKeyboard {
+        Self.logger.notice("Auto-switch is on but Input Monitoring is not granted; monitor not started")
+      }
       activeKeyboardMonitor.stop()
     }
   }
@@ -89,6 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       savedKeyboards: appSettings.savedKeyboards,
       selectedUUID: appSettings.selectedKeyboardUUID
     ) else { return }
+    Self.logger.info("Auto-switching to saved keyboard \(uuid, privacy: .public)")
     bleManager.switchToSavedKeyboard(uuid: uuid)
     updateButtonImage()
   }

@@ -52,6 +52,12 @@ Notes:
   in the menu bar (may be hidden behind the notch on MacBooks).
 - The bundle reads/writes its own `UserDefaults` domain, separate from
   `swift run`, so saved keyboards may differ between the two launch methods.
+- To exercise **Auto-Switch to Active Keyboard**, sign the bundle with a real
+  identity (`./scripts/build-app.sh "Developer ID Application: ..."`). The
+  Input Monitoring grant is tied to the code signature, and an ad-hoc
+  signature changes on every rebuild, so TCC silently drops the grant and the
+  monitor never starts. If a stale grant persists, run
+  `tccutil reset ListenEvent com.zmk-battery-bar.app` and re-allow.
 
 ## Architecture
 
