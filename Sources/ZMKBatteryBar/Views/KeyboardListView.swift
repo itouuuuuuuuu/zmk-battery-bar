@@ -56,7 +56,9 @@ struct KeyboardListView: View {
     .frame(width: 260)
     .onAppear {
       connectedUUIDs = bleManager.connectedKeyboardUUIDs()
-      bleManager.startScanning()
+      // Scanning is started explicitly by the user via "Start Scan"; drop any
+      // results left over from a previous visit so the panel opens clean.
+      bleManager.discoveredDevices = []
     }
     .onReceive(statusTimer) { _ in
       connectedUUIDs = bleManager.connectedKeyboardUUIDs()
