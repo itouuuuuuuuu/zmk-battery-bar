@@ -165,6 +165,15 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     discoveryFailureStreak = 0
   }
 
+  /// Makes the saved keyboard `uuid` the selected one and moves the live
+  /// connection over to it. No-op when it is already selected.
+  func switchToSavedKeyboard(uuid: String) {
+    guard appSettings.selectedKeyboardUUID != uuid else { return }
+    appSettings.selectedKeyboardUUID = uuid
+    disconnect()
+    connectSavedKeyboard()
+  }
+
   /// UUIDs of battery-service peripherals the system currently has connected.
   /// Used by the management UI to show per-keyboard connection status without
   /// filtering the saved list (a sleeping keyboard should stay visible).

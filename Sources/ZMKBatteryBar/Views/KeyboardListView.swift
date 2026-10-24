@@ -183,9 +183,7 @@ struct KeyboardListView: View {
 
   private func select(_ kb: KeyboardDevice) {
     guard appSettings.selectedKeyboardUUID != kb.uuid else { return }
-    appSettings.selectedKeyboardUUID = kb.uuid
-    bleManager.disconnect()
-    bleManager.connectSavedKeyboard()
+    bleManager.switchToSavedKeyboard(uuid: kb.uuid)
     onSelectionChange()
     refreshTick &+= 1
   }

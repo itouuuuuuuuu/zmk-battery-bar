@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private let appSettings = AppSettings()
   private let panelNavigation = PanelNavigation()
   private var bleManager: BLEManager!
+  private let activeKeyboardMonitor = ActiveKeyboardMonitor()
 
   private var lastRenderedRows: [StatusBarRow] = []
   private var renderTimer: Timer?
@@ -42,6 +43,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MainActor.assumeIsolated {
           self?.updateButtonImage()
         }
+      },
+      onAutoSwitchChange: { [weak self] in
+        MainActor.assumeIsolated {
+          self?.syncActiveKeyboardMonitor()
+        }
       }
     )
     panel = StatusBarPanel(content: menuContent)
@@ -56,11 +62,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     panel.onContentSizeChange = { [weak self] in
       self?.schedulePanelLayout()
     }
+
+    activeKeyboardMonitor.onKeyboardInput = { [weak self] productName in
+      self?.handleKeyboardInput(productName: productName)
+    }
+    syncActiveKeyboardMonitor()
+  }
+
+  // MARK: - Auto-switch
+
+  /// Starts or stops the HID monitor to match the setting. Starting is
+  /// skipped (not failed) while Input Monitoring is not yet granted; the
+  /// setting stays on and the monitor starts on the next launch once the
+  /// user has allowed it.
+  private func syncActiveKeyboardMonitor() {
+    if appSettings.autoSwitchKeyboard, ActiveKeyboardMonitor.hasAccess {
+      activeKeyboardMonitor.start()
+    } else {
+      activeKeyboardMonitor.stop()
+    }
+  }
+
+  private func handleKeyboardInput(productName: String) {
+    guard let uuid = ActiveKeyboardResolver.keyboardToSelect(
+      forHIDProductName: productName,
+      savedKeyboards: appSettings.savedKeyboards,
+      selectedUUID: appSettings.selectedKeyboardUUID
+    ) else { return }
+    bleManager.switchToSavedKeyboard(uuid: uuid)
+    updateButtonImage()
   }
 
   func applicationWillTerminate(_ notification: Notification) {
     renderTimer?.invalidate()
     renderTimer = nil
+    activeKeyboardMonitor.stop()
   }
 
   // MARK: - Status bar rendering

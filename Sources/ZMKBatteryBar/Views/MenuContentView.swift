@@ -7,11 +7,14 @@ struct MenuContentView: View {
   let batteryState: BatteryState
   let navigation: PanelNavigation
   var onLabelChange: () -> Void = {}
+  var onAutoSwitchChange: () -> Void = {}
 
   @State private var hideBatteryIcon = false
   @State private var singleLineLayout = false
   @State private var swapBatteryIconPositions = false
   @State private var launchAtLogin = LaunchAtLogin.isEnabled
+  @State private var autoSwitchKeyboard = false
+  @State private var hasInputMonitoringAccess = ActiveKeyboardMonitor.hasAccess
   @State private var now = Date()
   @State private var labelStyleTick = 0
 
@@ -82,6 +85,26 @@ struct MenuContentView: View {
           onLabelChange()
         }
 
+      Toggle("Auto-Switch to Active Keyboard", isOn: $autoSwitchKeyboard)
+        .onChange(of: autoSwitchKeyboard) { _, newValue in
+          appSettings.autoSwitchKeyboard = newValue
+          if newValue, !ActiveKeyboardMonitor.hasAccess {
+            // First call shows the system prompt; later calls are silent, so
+            // send the user to the Input Monitoring pane instead.
+            if !ActiveKeyboardMonitor.requestAccess() {
+              openInputMonitoringSettings()
+            }
+          }
+          hasInputMonitoringAccess = ActiveKeyboardMonitor.hasAccess
+          onAutoSwitchChange()
+        }
+      if autoSwitchKeyboard, !hasInputMonitoringAccess {
+        Text("Allow Input Monitoring in System Settings, then relaunch the app.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
       Toggle("Launch at Login", isOn: $launchAtLogin)
         .onChange(of: launchAtLogin) { _, newValue in
           do {
@@ -117,6 +140,14 @@ struct MenuContentView: View {
       hideBatteryIcon = !appSettings.showBatteryIcon
       singleLineLayout = appSettings.singleLineLayout
       swapBatteryIconPositions = appSettings.swapBatteryIconPositions
+      autoSwitchKeyboard = appSettings.autoSwitchKeyboard
+      hasInputMonitoringAccess = ActiveKeyboardMonitor.hasAccess
+    }
+  }
+
+  private func openInputMonitoringSettings() {
+    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") {
+      NSWorkspace.shared.open(url)
     }
   }
 
