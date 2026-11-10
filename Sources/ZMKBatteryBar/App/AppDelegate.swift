@@ -61,6 +61,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       self.panelNavigation.showKeyboardList = false
       self.bleManager.stopScanning()
     }
+    panel.isAnchorClick = { [weak self] in
+      guard let frame = self?.statusItem.button?.window?.frame else { return false }
+      return frame.contains(NSEvent.mouseLocation)
+    }
     panel.onContentSizeChange = { [weak self] in
       self?.schedulePanelLayout()
     }
@@ -261,6 +265,13 @@ final class StatusBarPanel: NSPanel {
   /// Called when the hosted SwiftUI content's ideal size changes, so the
   /// owner can resize the panel while it is open.
   var onContentSizeChange: (@MainActor () -> Void)?
+  /// Returns true when the current mouse-down landed on the status item that
+  /// toggles this panel. Whether the outside-click monitor sees those clicks
+  /// depends on the macOS version (the menu bar may be hosted by another
+  /// process). Closing here as well would make the status item's own action
+  /// find the panel hidden and reopen it, so such clicks are left to that
+  /// action alone.
+  var isAnchorClick: (@MainActor () -> Bool)?
 
   // NSEvent monitor handle. Marked nonisolated(unsafe) so `deinit` (which is
   // nonisolated) can clean it up. NSEvent.addGlobalMonitorForEvents /
@@ -317,7 +328,8 @@ final class StatusBarPanel: NSPanel {
     removeMonitor()
     super.makeKeyAndOrderFront(sender)
     monitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-      self?.close()
+      guard let self, self.isAnchorClick?() != true else { return }
+      self.close()
     }
   }
 
