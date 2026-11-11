@@ -50,9 +50,11 @@ jobs:
           echo "name=${IDENTITY}" >> "$GITHUB_OUTPUT"
 
       - name: Build and sign
+        env:
+          SIGN_IDENTITY: ${{ steps.identity.outputs.name }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          ./scripts/build-app.sh "${{ steps.identity.outputs.name }}" "${VERSION}"
+          ./scripts/build-app.sh "${SIGN_IDENTITY}" "${VERSION}"
 
       - name: Notarize and staple
         env:
