@@ -42,7 +42,7 @@ brew install --cask itouuuuuuuuu/tap/zmk-battery-bar
 
 1. Launch ZMK Battery Bar — it appears in the menu bar with `C` and `P` battery levels
 2. Click the status bar item to open the popover
-3. If no keyboard is connected, click **Add Keyboard...**, then **Start Scan** to scan for BLE devices
+3. If no keyboard is connected, click **Keyboards...**, then **Start Scan** to scan for BLE devices
 4. Select your ZMK keyboard from the discovered devices list
 5. Battery levels update automatically via BLE notifications
 
@@ -53,6 +53,8 @@ The menu bar shows `C` (Central) and `P` (Peripheral) by default. To display `L`
 1. Open the popover and locate the `[ L ][ R ]` buttons on the right of each battery row
 2. Tap `L` or `R` on the **Central** row to assign that letter to the central side (the peripheral row flips automatically)
 3. Tap the same letter again to revert to `C` / `P`
+
+When the keyboard reports more than one peripheral (for example a dongle as the central with two halves), each **Peripheral** row gets its own `[ L ][ R ]` buttons instead. Once every peripheral has a distinct letter, the menu bar shows those peripherals in place of the central row.
 
 Labels are stored per keyboard, so each registered keyboard keeps its own assignment.
 
