@@ -19,8 +19,12 @@ echo "Building ${EXECUTABLE_NAME} as universal binary (${ARCHS[*]})..."
 BIN_PATHS=()
 for ARCH in "${ARCHS[@]}"; do
   echo "  -> ${ARCH}"
-  swift build -c release --arch "${ARCH}"
-  BIN_DIR="$(swift build -c release --arch "${ARCH}" --show-bin-path)"
+  # Each architecture gets its own scratch directory. Whether SwiftPM puts the
+  # architecture in the output path depends on its build system, and when it
+  # does not, both slices land on the same file and lipo has nothing to merge.
+  SCRATCH_DIR=".build/release-${ARCH}"
+  swift build -c release --arch "${ARCH}" --scratch-path "${SCRATCH_DIR}"
+  BIN_DIR="$(swift build -c release --arch "${ARCH}" --scratch-path "${SCRATCH_DIR}" --show-bin-path)"
   BIN_PATHS+=("${BIN_DIR}/${EXECUTABLE_NAME}")
 done
 
