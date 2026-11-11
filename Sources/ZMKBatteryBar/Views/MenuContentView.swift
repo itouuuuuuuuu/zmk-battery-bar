@@ -13,6 +13,7 @@ struct MenuContentView: View {
   @State private var singleLineLayout = false
   @State private var swapBatteryIconPositions = false
   @State private var launchAtLogin = LaunchAtLogin.isEnabled
+  @State private var revertingLaunchAtLogin = false
   @State private var autoSwitchKeyboard = false
   @State private var hasInputMonitoringAccess = ActiveKeyboardMonitor.hasAccess
   @State private var now = Date()
@@ -110,6 +111,14 @@ struct MenuContentView: View {
 
       Toggle("Launch at Login", isOn: $launchAtLogin)
         .onChange(of: launchAtLogin) { _, newValue in
+          // Reverting the toggle after a failure fires this handler again.
+          // Acting on that would call the opposite SMAppService operation,
+          // which fails too (unregistering an unregistered app is an error)
+          // and flips the toggle back, bouncing between the two states.
+          if revertingLaunchAtLogin {
+            revertingLaunchAtLogin = false
+            return
+          }
           do {
             if newValue {
               try LaunchAtLogin.enable()
@@ -117,6 +126,7 @@ struct MenuContentView: View {
               try LaunchAtLogin.disable()
             }
           } catch {
+            revertingLaunchAtLogin = true
             launchAtLogin = !newValue
           }
         }

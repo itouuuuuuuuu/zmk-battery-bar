@@ -1,7 +1,9 @@
 import Foundation
+import os
 
 final class AppSettings {
   private let defaults: UserDefaults
+  private static let logger = Logger(subsystem: "com.zmk-battery-bar.app", category: "AppSettings")
 
   init(defaults: UserDefaults = .standard) {
     self.defaults = defaults
@@ -58,10 +60,15 @@ final class AppSettings {
 
   var savedKeyboards: [KeyboardDevice] {
     get {
-      guard let data = defaults.data(forKey: Keys.savedKeyboards),
-            let devices = try? JSONDecoder().decode([KeyboardDevice].self, from: data)
-      else { return [] }
-      return devices
+      guard let data = defaults.data(forKey: Keys.savedKeyboards) else { return [] }
+      do {
+        return try JSONDecoder().decode([KeyboardDevice].self, from: data)
+      } catch {
+        // Undecodable data reads as an empty list, which the next save then
+        // overwrites. Leave a trace so a vanished keyboard list is explainable.
+        Self.logger.error("Saved keyboards could not be decoded: \(error.localizedDescription, privacy: .public)")
+        return []
+      }
     }
     set {
       if let data = try? JSONEncoder().encode(newValue) {

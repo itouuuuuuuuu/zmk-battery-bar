@@ -20,5 +20,7 @@
   <string>ZMKBatteryBar</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>14.0</string>
 </dict>
 </plist>

@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private static let logger = Logger(subsystem: "com.zmk-battery-bar.app", category: "AppDelegate")
 
   private var lastRenderedRows: [StatusBarRow] = []
+  private var lastRenderedScale: CGFloat = 0
   private var renderTimer: Timer?
   private var panelLayoutScheduled = false
 
@@ -119,7 +120,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   @MainActor private func updateButtonImageIfNeeded() {
     let rows = currentStatusBarRows()
-    guard rows != lastRenderedRows else { return }
+    // The image is rasterized at the screen's scale, so it also goes out of
+    // date when the status item moves to a display with a different one.
+    guard rows != lastRenderedRows || currentRenderScale() != lastRenderedScale else { return }
     renderStatusBar(rows: rows)
   }
 
@@ -130,9 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   @MainActor private func renderStatusBar(rows: [StatusBarRow]) {
     guard let button = statusItem.button else { return }
 
-    let renderScale = button.window?.screen?.backingScaleFactor
-      ?? NSScreen.main?.backingScaleFactor
-      ?? 2.0
+    let renderScale = currentRenderScale()
     let content = StatusBarView(
       rows: rows,
       showBatteryIcon: appSettings.showBatteryIcon,
@@ -153,6 +154,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // render is retried on the next tick instead of being skipped as
     // already-rendered.
     lastRenderedRows = rows
+    lastRenderedScale = renderScale
+  }
+
+  @MainActor private func currentRenderScale() -> CGFloat {
+    statusItem.button?.window?.screen?.backingScaleFactor
+      ?? NSScreen.main?.backingScaleFactor
+      ?? 2.0
   }
 
   @MainActor private func currentStatusBarRows() -> [StatusBarRow] {

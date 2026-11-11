@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 struct KeyboardListView: View {
@@ -168,7 +169,7 @@ struct KeyboardListView: View {
             .lineLimit(1)
           Spacer()
           Button("Connect") {
-            bleManager.connect(peripheral: device.peripheral)
+            bleManager.connect(peripheral: device.peripheral, displayName: device.name)
             onSelectionChange()
             onDismiss()
           }

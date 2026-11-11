@@ -1,5 +1,6 @@
 @preconcurrency import CoreBluetooth
 import Foundation
+import os
 
 // MARK: - DeviceRole
 
@@ -27,6 +28,11 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   private static let batteryServiceUUID = CBUUID(string: "180F")
   private static let batteryLevelCharacteristicUUID = CBUUID(string: "2A19")
   private static let characteristicUserDescriptionUUID = CBUUID(string: "2901")
+
+  // Unified logging rather than stdout: a bundle launched from Finder or at
+  // login has no stdout to read, and these messages exist to diagnose
+  // connection flakiness after the fact in Console.app.
+  private static let logger = Logger(subsystem: "com.zmk-battery-bar.app", category: "BLEManager")
 
   // MARK: - Published Properties
 
@@ -107,7 +113,11 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     isScanning = false
   }
 
-  func connect(peripheral: CBPeripheral) {
+  /// `displayName` is the name the device was listed under in the scan
+  /// results. It is preferred over `peripheral.name` because the latter can
+  /// still be nil for a peripheral known only from its advertisement, and the
+  /// saved name is what auto-switch matches against the HID product name.
+  func connect(peripheral: CBPeripheral, displayName: String? = nil) {
     stopScanning()
 
     // Cancel any existing connection before overwriting connectedPeripheral.
@@ -131,7 +141,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     centralManager.connect(peripheral, options: nil)
 
     let uuid = peripheral.identifier.uuidString
-    let name = peripheral.name ?? "Unknown"
+    let name = displayName ?? peripheral.name ?? "Unknown"
     appSettings.selectedKeyboardUUID = uuid
     appSettings.addKeyboard(uuid: uuid, name: name)
   }
@@ -326,7 +336,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     peripheral: CBPeripheral,
     message: String
   ) {
-    print("[BLEManager] \(message)")
+    Self.logger.error("\(message, privacy: .public)")
     guard peripheral.identifier == connectedPeripheral?.identifier else { return }
 
     // Every successful transport connect resets reconnectDelay, so derive the
@@ -416,7 +426,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     error: Error?
   ) {
     guard peripheral.identifier == connectedPeripheral?.identifier else { return }
-    print("[BLEManager] Failed to connect: \(error?.localizedDescription ?? "unknown error")")
+    Self.logger.error("Failed to connect: \(error?.localizedDescription ?? "unknown error", privacy: .public)")
     scheduleReconnect()
   }
 
@@ -450,7 +460,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     error: Error?
   ) {
     if let error {
-      print("[BLEManager] Characteristic discovery error: \(error.localizedDescription)")
+      Self.logger.error("Characteristic discovery error: \(error.localizedDescription, privacy: .public)")
     }
     guard peripheral.identifier == connectedPeripheral?.identifier,
           pendingCharacteristicDiscoveries > 0
@@ -490,7 +500,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     error: Error?
   ) {
     if let error {
-      print("[BLEManager] Descriptor discovery error: \(error.localizedDescription)")
+      Self.logger.error("Descriptor discovery error: \(error.localizedDescription, privacy: .public)")
       markTerminalFailureAndTryResolve(for: characteristic)
       peripheral.readValue(for: characteristic)
       return
@@ -524,7 +534,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     else { return }
 
     if let error {
-      print("[BLEManager] Descriptor read error: \(error.localizedDescription)")
+      Self.logger.error("Descriptor read error: \(error.localizedDescription, privacy: .public)")
       markTerminalFailureAndTryResolve(for: characteristic)
       peripheral.readValue(for: characteristic)
       return
@@ -551,7 +561,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     guard peripheral.identifier == connectedPeripheral?.identifier else { return }
 
     if let error {
-      print("[BLEManager] Battery read error: \(error.localizedDescription)")
+      Self.logger.error("Battery read error: \(error.localizedDescription, privacy: .public)")
       return
     }
     guard let level = BatteryPayload.parseLevel(from: characteristic.value) else { return }
