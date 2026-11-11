@@ -29,6 +29,12 @@ enum RoleAssigner {
   /// Array-index fallback: first characteristic is central, any subsequent one
   /// is peripheral. Returns nil if the target already has a role or is not in
   /// the array.
+  ///
+  /// A keyboard has exactly one central half, so when another characteristic
+  /// already holds the central role the first slot falls back to peripheral
+  /// instead. Assigning a second central would make the composer overwrite
+  /// one central level with the other and drop this characteristic from the
+  /// peripheral list.
   static func roleByIndex<Key: Hashable>(
     target: Key,
     allCharacteristics: [Key],
@@ -39,7 +45,8 @@ enum RoleAssigner {
     else {
       return nil
     }
-    return index == 0 ? .central : .peripheral
+    let hasCentral = roles.values.contains(.central)
+    return index == 0 && !hasCentral ? .central : .peripheral
   }
 
   /// Cascade-assigns roles to unresolved characteristics. Returns the updated

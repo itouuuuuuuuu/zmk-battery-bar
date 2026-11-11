@@ -185,6 +185,23 @@ struct RoleAssignerTests {
     #expect(updated == [a: .central, b: .peripheral])
   }
 
+  @Test("first slot is peripheral when another characteristic is already central")
+  func roleByIndexFirstSlotPeripheralWhenCentralExists() {
+    #expect(
+      RoleAssigner.roleByIndex(target: a, allCharacteristics: [a, b, c], roles: [c: .central]) == .peripheral
+    )
+  }
+
+  @Test("central resolved last, others terminally failed → no second central")
+  func fallbackNeverAssignsSecondCentral() {
+    let updated = RoleAssigner.assignFallbackRoles(
+      allCharacteristics: [a, b, c],
+      roles: [c: .central],
+      terminallyFailed: [a, b]
+    )
+    #expect(updated == [a: .peripheral, b: .peripheral, c: .central])
+  }
+
   @Test("only some terminally failed → no fallback assignment")
   func fallbackPartialFailureSkips() {
     let updated = RoleAssigner.assignFallbackRoles(

@@ -68,7 +68,7 @@ Notes:
   - `BatteryStateComposer.swift`, `BatteryPayload.swift`, `DescriptorRoleParser.swift`, `RoleAssigner.swift`, `ReconnectBackoff.swift` - pure logic extracted from BLEManager (see Testing)
 - `Sources/ZMKBatteryBar/Views/` - SwiftUI: `StatusBarView` (menu bar content), `MenuContentView` (panel), `KeyboardListView` (scan/save/manage keyboards), `BatteryIconView` (pixel-snapped battery icon)
 - `Sources/ZMKBatteryBar/Models/` - `BatteryState` (@Observable), `AppSettings` (UserDefaults-backed), `KeyboardDevice` (saved keyboard + label config), `PanelNavigation`
-- `Sources/ZMKBatteryBar/Utilities/` - `LaunchAtLogin` (SMAppService), `StatusBarLayout`, `TimeAgoFormatter`
+- `Sources/ZMKBatteryBar/Utilities/` - `LaunchAtLogin` (SMAppService), `StatusBarLayout`, `TimeAgoFormatter`, `ActiveKeyboardMonitor` (IOKit HID source-device monitor for auto-switch), `ActiveKeyboardResolver`, `KeyboardInputThrottle`
 
 ### ZMK/BLE domain notes
 
@@ -91,7 +91,8 @@ Notes:
 CoreBluetooth is not unit-testable, so BLE/UI logic that can be expressed as a
 pure function lives in small standalone enums/structs (`BatteryStateComposer`,
 `RoleAssigner`, `DescriptorRoleParser`, `ReconnectBackoff`, `BatteryPayload`,
-`StatusBarLayout`, `BatteryIconLayout`, `TimeAgoFormatter`) with tests under
+`StatusBarLayout`, `BatteryIconLayout`, `TimeAgoFormatter`,
+`ActiveKeyboardResolver`, `KeyboardInputThrottle`) with tests under
 `Tests/ZMKBatteryBarTests/` mirroring the source layout. When adding logic to
 `BLEManager` or views, prefer extracting it into a testable helper the same way.
 
@@ -128,7 +129,7 @@ been the subject of a real bug:
 
 - Never commit directly to `main`; create a feature branch and open a PR.
 - Commit messages use conventional prefixes (`feat:`, `fix:`, `docs:`, `chore:`).
-- Run `swift test` before pushing. The full suite is fast (~90 tests).
+- Run `swift test` before pushing. The full suite is fast (~100 tests).
 - Do not merge a PR unless explicitly asked to.
 - After a merge: `git checkout main && git pull`, and delete the merged branch.
 - Cross-check non-trivial review findings with a second agent before acting on
