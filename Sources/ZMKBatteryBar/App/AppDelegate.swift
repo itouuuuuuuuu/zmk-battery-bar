@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var panel: StatusBarPanel!
 
   private let batteryState = BatteryState()
+  private let hostStatusState = HostStatusState()
   private let appSettings = AppSettings()
   private let panelNavigation = PanelNavigation()
   private var bleManager: BLEManager!
@@ -15,12 +16,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private static let logger = Logger(subsystem: "com.zmk-battery-bar.app", category: "AppDelegate")
 
   private var lastRenderedRows: [StatusBarRow] = []
+  private var lastRenderedLayerInfo: StatusBarLayerInfo?
   private var lastRenderedScale: CGFloat = 0
   private var renderTimer: Timer?
   private var panelLayoutScheduled = false
 
   func applicationDidFinishLaunching(_ notification: Notification) {
-    bleManager = BLEManager(batteryState: batteryState, appSettings: appSettings)
+    bleManager = BLEManager(batteryState: batteryState, hostStatusState: hostStatusState, appSettings: appSettings)
+    bleManager.onHostStatusChange = { [weak self] in
+      // BLE callbacks arrive after launch completes, but never touch the
+      // implicitly unwrapped status item before it exists.
+      guard let self, self.statusItem != nil else { return }
+      self.updateButtonImageIfNeeded()
+    }
 
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
@@ -41,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       bleManager: bleManager,
       appSettings: appSettings,
       batteryState: batteryState,
+      hostStatusState: hostStatusState,
       navigation: panelNavigation,
       onLabelChange: { [weak self] in
         MainActor.assumeIsolated {
@@ -120,9 +129,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   @MainActor private func updateButtonImageIfNeeded() {
     let rows = currentStatusBarRows()
+    let layerInfo = currentLayerInfo()
     // The image is rasterized at the screen's scale, so it also goes out of
     // date when the status item moves to a display with a different one.
-    guard rows != lastRenderedRows || currentRenderScale() != lastRenderedScale else { return }
+    guard rows != lastRenderedRows
+      || layerInfo != lastRenderedLayerInfo
+      || currentRenderScale() != lastRenderedScale
+    else { return }
     renderStatusBar(rows: rows)
   }
 
@@ -134,10 +147,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     guard let button = statusItem.button else { return }
 
     let renderScale = currentRenderScale()
+    let layerInfo = currentLayerInfo()
     let content = StatusBarView(
       rows: rows,
       showBatteryIcon: appSettings.showBatteryIcon,
-      singleLine: appSettings.singleLineLayout
+      singleLine: appSettings.singleLineLayout,
+      layerInfo: layerInfo
     )
     .environment(\.displayScale, renderScale)
     let renderer = ImageRenderer(content: content)
@@ -154,6 +169,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // render is retried on the next tick instead of being skipped as
     // already-rendered.
     lastRenderedRows = rows
+    lastRenderedLayerInfo = layerInfo
     lastRenderedScale = renderScale
   }
 
@@ -161,6 +177,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     statusItem.button?.window?.screen?.backingScaleFactor
       ?? NSScreen.main?.backingScaleFactor
       ?? 2.0
+  }
+
+  /// Nil (batteries only) for keyboards without the zmk-host-status module.
+  @MainActor private func currentLayerInfo() -> StatusBarLayerInfo? {
+    guard hostStatusState.isAvailable, let status = hostStatusState.status else { return nil }
+    let layer = appSettings.showLayerIndicator
+      ? LayerDisplayResolver.resolve(
+          names: hostStatusState.layerNames,
+          activeLayers: status.activeLayers,
+          lockedLayers: status.lockedLayers,
+          hidden: Set(appSettings.hiddenLayerNames)
+        )
+      : nil
+    let info = StatusBarLayerInfo(layer: layer, splitLinkDown: !status.splitLinkUp)
+    return (info.layer == nil && !info.splitLinkDown) ? nil : info
   }
 
   @MainActor private func currentStatusBarRows() -> [StatusBarRow] {

@@ -13,6 +13,22 @@ A macOS menu bar app that displays battery levels from ZMK split keyboards via B
 ![Release](https://img.shields.io/github/v/release/itouuuuuuuuu/zmk-battery-bar)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 
+
+## Layer indicator (optional firmware module)
+
+Keyboards running the [zmk-host-status](https://github.com/johncattrall/zmk-host-status)
+ZMK module also get, next to the batteries:
+
+- the active layer name in the menu bar, with a lock symbol when it is toggled on;
+- badges for other locked layers underneath (e.g. an alternate alpha layer while
+  a function layer is held on top of it);
+- a warning symbol when a split half is not linked to the central half;
+- the firmware build id in the panel, to confirm which build is actually flashed.
+
+Layers named in "Hidden layers" (default: `Mouse`) are never shown, so an
+auto-mouse layer raised by trackball motion does not make the indicator flicker.
+Keyboards without the module are unaffected and show batteries only.
+
 ## Features
 
 - **Two-line status bar display** — Shows Central (C) and Peripheral (P) battery levels with custom-drawn battery icons

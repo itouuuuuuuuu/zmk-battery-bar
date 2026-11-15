@@ -5,6 +5,14 @@ struct StatusBarRow: Equatable {
   let level: Int?
 }
 
+/// Layer and split-link information drawn before the battery rows. Present
+/// only for keyboards running the zmk-host-status firmware module.
+struct StatusBarLayerInfo: Equatable {
+  var layer: LayerDisplayResolver.Display?
+  /// True when a split half is not linked to the central half.
+  var splitLinkDown: Bool
+}
+
 struct StatusBarView: View {
   let rows: [StatusBarRow]
   var showBatteryIcon: Bool = true
@@ -12,6 +20,7 @@ struct StatusBarView: View {
   /// with a slightly larger font and a taller battery icon. The icon width is
   /// unchanged from the two-line layout.
   var singleLine: Bool = false
+  var layerInfo: StatusBarLayerInfo? = nil
 
   private static let labelFont = Font.system(size: 11, weight: .semibold, design: .rounded)
   private static let singleLineFont = Font.system(size: 13, weight: .semibold, design: .rounded)
@@ -23,11 +32,46 @@ struct StatusBarView: View {
   private static let singleLineIconHeight: CGFloat = 10
 
   var body: some View {
-    if singleLine {
-      singleLineBody
-    } else {
-      twoLineBody
+    HStack(spacing: 5) {
+      if let layerInfo {
+        layerBody(layerInfo)
+      }
+      if singleLine {
+        singleLineBody
+      } else {
+        twoLineBody
+      }
     }
+    .frame(height: 22)
+    .allowsHitTesting(false)
+  }
+
+  private func layerBody(_ info: StatusBarLayerInfo) -> some View {
+    HStack(spacing: 3) {
+      if info.splitLinkDown {
+        // A half is not linked to the central half: the most important
+        // thing the indicator can say, so it comes first.
+        Image(systemName: "exclamationmark.triangle.fill")
+          .font(.system(size: 11, weight: .semibold))
+      }
+      if let layer = info.layer {
+        Text(layer.current)
+          .font(Self.singleLineFont)
+        if layer.currentLocked {
+          Image(systemName: "lock.fill")
+            .font(.system(size: 8, weight: .semibold))
+        }
+        ForEach(layer.badges, id: \.self) { badge in
+          Text(badge)
+            .font(Self.labelFont)
+            .padding(.horizontal, 3)
+            .overlay(RoundedRectangle(cornerRadius: 3).stroke(lineWidth: 1))
+        }
+      }
+    }
+    .lineLimit(1)
+    .fixedSize()
+    .padding(.leading, 1)
   }
 
   private var twoLineBody: some View {

@@ -5,6 +5,7 @@ struct MenuContentView: View {
   @ObservedObject var bleManager: BLEManager
   let appSettings: AppSettings
   let batteryState: BatteryState
+  let hostStatusState: HostStatusState
   let navigation: PanelNavigation
   var onLabelChange: () -> Void = {}
   var onAutoSwitchChange: () -> Void = {}
@@ -15,6 +16,8 @@ struct MenuContentView: View {
   @State private var launchAtLogin = LaunchAtLogin.isEnabled
   @State private var revertingLaunchAtLogin = false
   @State private var autoSwitchKeyboard = false
+  @State private var showLayerIndicator = true
+  @State private var hiddenLayersText = ""
   @State private var hasInputMonitoringAccess = ActiveKeyboardMonitor.hasAccess
   @State private var now = Date()
   @State private var labelStyleTick = 0
@@ -66,6 +69,11 @@ struct MenuContentView: View {
           .onReceive(updateTimer) { now = $0 }
       }
 
+      if hostStatusState.isAvailable, let status = hostStatusState.status {
+        Divider()
+        hostStatusSection(status)
+      }
+
       Divider()
 
       Toggle("Hide Battery Icon", isOn: $hideBatteryIcon)
@@ -85,6 +93,27 @@ struct MenuContentView: View {
           appSettings.swapBatteryIconPositions = newValue
           onLabelChange()
         }
+
+      if hostStatusState.isAvailable {
+        Toggle("Show Layer in Menu Bar", isOn: $showLayerIndicator)
+          .onChange(of: showLayerIndicator) { _, newValue in
+            appSettings.showLayerIndicator = newValue
+            onLabelChange()
+          }
+        HStack {
+          Text("Hidden layers")
+          TextField("Mouse", text: $hiddenLayersText)
+            .textFieldStyle(.roundedBorder)
+            .onSubmit {
+              appSettings.hiddenLayerNames = hiddenLayersText
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+              onLabelChange()
+            }
+        }
+        .help("Comma-separated layer names never shown in the menu bar. Press Return to apply.")
+      }
 
       Toggle("Auto-Switch to Active Keyboard", isOn: $autoSwitchKeyboard)
         .onChange(of: autoSwitchKeyboard) { _, newValue in
@@ -155,12 +184,64 @@ struct MenuContentView: View {
       swapBatteryIconPositions = appSettings.swapBatteryIconPositions
       autoSwitchKeyboard = appSettings.autoSwitchKeyboard
       hasInputMonitoringAccess = ActiveKeyboardMonitor.hasAccess
+      showLayerIndicator = appSettings.showLayerIndicator
+      hiddenLayersText = appSettings.hiddenLayerNames.joined(separator: ", ")
     }
   }
 
   private func openInputMonitoringSettings() {
     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") {
       NSWorkspace.shared.open(url)
+    }
+  }
+
+  @ViewBuilder
+  private func hostStatusSection(_ status: HostStatus) -> some View {
+    let names = hostStatusState.layerNames
+    let display = LayerDisplayResolver.resolve(
+      names: names,
+      activeLayers: status.activeLayers,
+      lockedLayers: status.lockedLayers,
+      hidden: []
+    )
+    if let display {
+      HStack {
+        Text("Layer")
+        Spacer()
+        Text(display.currentLocked ? "\(display.current) (locked)" : display.current)
+          .foregroundStyle(.secondary)
+      }
+      if !display.badges.isEmpty {
+        HStack {
+          Text("Also locked")
+          Spacer()
+          Text(display.badges.joined(separator: ", "))
+            .foregroundStyle(.secondary)
+        }
+      }
+    }
+    if status.peripheralsExpected > 0 {
+      HStack {
+        Text("Split link")
+        Spacer()
+        if status.splitLinkUp {
+          Text("Connected").foregroundStyle(.secondary)
+        } else {
+          Label("\(status.peripheralsConnected) of \(status.peripheralsExpected) halves linked",
+                systemImage: "exclamationmark.triangle.fill")
+            .foregroundStyle(.orange)
+        }
+      }
+    }
+    if let build = hostStatusState.buildID {
+      HStack {
+        Text("Firmware")
+        Spacer()
+        Text(build)
+          .font(.body.monospaced())
+          .foregroundStyle(.secondary)
+          .textSelection(.enabled)
+      }
     }
   }
 

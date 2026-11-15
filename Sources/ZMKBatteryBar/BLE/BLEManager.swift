@@ -28,6 +28,11 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   private static let batteryServiceUUID = CBUUID(string: "180F")
   private static let batteryLevelCharacteristicUUID = CBUUID(string: "2A19")
   private static let characteristicUserDescriptionUUID = CBUUID(string: "2901")
+  // zmk-host-status firmware module (optional; absent on most keyboards).
+  private static let hostStatusServiceUUID = CBUUID(string: "6E1A0001-7C5B-4F2E-9A3D-2B8C4D1E5F60")
+  private static let hostStatusCharacteristicUUID = CBUUID(string: "6E1A0002-7C5B-4F2E-9A3D-2B8C4D1E5F60")
+  private static let hostLayerNamesCharacteristicUUID = CBUUID(string: "6E1A0003-7C5B-4F2E-9A3D-2B8C4D1E5F60")
+  private static let hostBuildCharacteristicUUID = CBUUID(string: "6E1A0004-7C5B-4F2E-9A3D-2B8C4D1E5F60")
 
   // Unified logging rather than stdout: a bundle launched from Finder or at
   // login has no stdout to read, and these messages exist to diagnose
@@ -45,7 +50,14 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   private var centralManager: CBCentralManager!
   private var connectedPeripheral: CBPeripheral?
   private let batteryState: BatteryState
+  private let hostStatusState: HostStatusState
   private let appSettings: AppSettings
+  /// The host-status characteristic, kept for the safety-net poll.
+  private var hostStatusCharacteristic: CBCharacteristic?
+  /// Called on the main actor whenever host status (layer, split link,
+  /// build) changes, so the menu bar can redraw immediately instead of
+  /// waiting for the periodic render tick.
+  var onHostStatusChange: (() -> Void)?
   private var batteryCharacteristics: [CBCharacteristic] = []
   private var characteristicRoles: [CBCharacteristic: DeviceRole] = [:]
   // Characteristics whose descriptor-based role resolution has terminally
@@ -73,8 +85,9 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
 
   // MARK: - Init
 
-  init(batteryState: BatteryState, appSettings: AppSettings) {
+  init(batteryState: BatteryState, hostStatusState: HostStatusState, appSettings: AppSettings) {
     self.batteryState = batteryState
+    self.hostStatusState = hostStatusState
     self.appSettings = appSettings
     super.init()
     self.centralManager = CBCentralManager(delegate: self, queue: nil)
@@ -131,6 +144,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     stopPollingTimer()
     resetCharacteristicState()
     batteryState.reset()
+    resetHostStatus()
     // A user-picked keyboard must not inherit backoff inflated by the
     // previous keyboard's failures.
     reconnectDelay = Self.initialReconnectDelay
@@ -213,6 +227,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     connectedPeripheral = nil
     resetCharacteristicState()
     batteryState.reset()
+    resetHostStatus()
   }
 
   private func resetCharacteristicState() {
@@ -221,6 +236,12 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     terminallyFailedCharacteristics = []
     latestBatteryLevels = [:]
     pendingCharacteristicDiscoveries = 0
+    hostStatusCharacteristic = nil
+  }
+
+  private func resetHostStatus() {
+    hostStatusState.reset()
+    onHostStatusChange?()
   }
 
   private func startPollingTimer() {
@@ -240,6 +261,10 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
 
   private func readAllBatteryCharacteristics() {
     guard let peripheral = connectedPeripheral else { return }
+    // Safety net for a missed host-status notification; status is push-based.
+    if let hostStatusCharacteristic {
+      peripheral.readValue(for: hostStatusCharacteristic)
+    }
     for characteristic in batteryCharacteristics {
       if characteristicRoles[characteristic] == nil {
         // The initial descriptor read failed (or has not completed yet).
@@ -356,6 +381,24 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     }
   }
 
+  private func applyHostStatusValue(_ characteristic: CBCharacteristic) {
+    switch characteristic.uuid {
+    case Self.hostStatusCharacteristicUUID:
+      guard let status = HostStatusPayload.parseStatus(from: characteristic.value) else { return }
+      guard hostStatusState.status != status || !hostStatusState.isAvailable else { return }
+      hostStatusState.status = status
+      hostStatusState.isAvailable = true
+    case Self.hostLayerNamesCharacteristicUUID:
+      guard let names = HostStatusPayload.parseLayerNames(from: characteristic.value) else { return }
+      hostStatusState.layerNames = names
+    case Self.hostBuildCharacteristicUUID:
+      hostStatusState.buildID = HostStatusPayload.parseBuildID(from: characteristic.value)
+    default:
+      return
+    }
+    onHostStatusChange?()
+  }
+
   // MARK: - CBCentralManagerDelegate
 
   func centralManagerDidUpdateState(_ central: CBCentralManager) {
@@ -399,7 +442,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     // Repeated discovery failures still back off via discoveryFailureStreak.
     reconnectDelay = Self.initialReconnectDelay
     resetCharacteristicState()
-    peripheral.discoverServices([Self.batteryServiceUUID])
+    peripheral.discoverServices([Self.batteryServiceUUID, Self.hostStatusServiceUUID])
     startPollingTimer()
   }
 
@@ -417,6 +460,7 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     stopPollingTimer()
     resetCharacteristicState()
     batteryState.reset()
+    resetHostStatus()
     scheduleReconnect()
   }
 
@@ -440,7 +484,10 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
       )
       return
     }
-    guard let services = peripheral.services, !services.isEmpty else {
+    // The host-status service is optional and tracked separately: it must
+    // never count toward (or substitute for) battery service discovery.
+    let batteryServices = peripheral.services?.filter { $0.uuid == Self.batteryServiceUUID } ?? []
+    guard !batteryServices.isEmpty else {
       recoverFromDiscoveryFailure(
         peripheral: peripheral,
         message: "Service discovery returned no battery services"
@@ -448,8 +495,15 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
       return
     }
     guard peripheral.identifier == connectedPeripheral?.identifier else { return }
-    pendingCharacteristicDiscoveries = services.count
-    for service in services {
+    if let hostService = peripheral.services?.first(where: { $0.uuid == Self.hostStatusServiceUUID }) {
+      peripheral.discoverCharacteristics([
+        Self.hostStatusCharacteristicUUID,
+        Self.hostLayerNamesCharacteristicUUID,
+        Self.hostBuildCharacteristicUUID,
+      ], for: hostService)
+    }
+    pendingCharacteristicDiscoveries = batteryServices.count
+    for service in batteryServices {
       peripheral.discoverCharacteristics([Self.batteryLevelCharacteristicUUID], for: service)
     }
   }
@@ -461,6 +515,22 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
   ) {
     if let error {
       Self.logger.error("Characteristic discovery error: \(error.localizedDescription, privacy: .public)")
+    }
+    if service.uuid == Self.hostStatusServiceUUID {
+      guard error == nil, peripheral.identifier == connectedPeripheral?.identifier else { return }
+      for characteristic in service.characteristics ?? [] {
+        switch characteristic.uuid {
+        case Self.hostStatusCharacteristicUUID:
+          hostStatusCharacteristic = characteristic
+          peripheral.setNotifyValue(true, for: characteristic)
+          peripheral.readValue(for: characteristic)
+        case Self.hostLayerNamesCharacteristicUUID, Self.hostBuildCharacteristicUUID:
+          peripheral.readValue(for: characteristic)
+        default:
+          break
+        }
+      }
+      return
     }
     guard peripheral.identifier == connectedPeripheral?.identifier,
           pendingCharacteristicDiscoveries > 0
@@ -559,6 +629,15 @@ final class BLEManager: NSObject, ObservableObject, @preconcurrency CBCentralMan
     error: Error?
   ) {
     guard peripheral.identifier == connectedPeripheral?.identifier else { return }
+
+    if characteristic.service?.uuid == Self.hostStatusServiceUUID {
+      if let error {
+        Self.logger.error("Host status read error: \(error.localizedDescription, privacy: .public)")
+        return
+      }
+      applyHostStatusValue(characteristic)
+      return
+    }
 
     if let error {
       Self.logger.error("Battery read error: \(error.localizedDescription, privacy: .public)")

@@ -16,6 +16,27 @@ final class AppSettings {
     static let swapBatteryIconPositions = "swapBatteryIconPositions"
     static let singleLineLayout = "singleLineLayout"
     static let autoSwitchKeyboard = "autoSwitchKeyboard"
+    static let showLayerIndicator = "showLayerIndicator"
+    static let hiddenLayerNames = "hiddenLayerNames"
+  }
+
+  /// Whether the active layer (from the zmk-host-status firmware module) is
+  /// drawn in the menu bar. Has no effect on keyboards without the module.
+  /// Defaults to true.
+  var showLayerIndicator: Bool {
+    get {
+      guard defaults.object(forKey: Keys.showLayerIndicator) != nil else { return true }
+      return defaults.bool(forKey: Keys.showLayerIndicator)
+    }
+    set { defaults.set(newValue, forKey: Keys.showLayerIndicator) }
+  }
+
+  /// Layer names never shown in the menu bar (case-insensitive). Defaults to
+  /// ["Mouse"]: an auto-mouse layer raised by pointer motion would otherwise
+  /// make the indicator flicker whenever the trackball moves.
+  var hiddenLayerNames: [String] {
+    get { defaults.stringArray(forKey: Keys.hiddenLayerNames) ?? ["Mouse"] }
+    set { defaults.set(newValue, forKey: Keys.hiddenLayerNames) }
   }
 
   /// Whether the battery icon is drawn in the menu bar. When false, only the
